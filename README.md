@@ -165,3 +165,13 @@ This project uses [**pre-commit**](https://pre-commit.com/) to ensure consistent
 | `check-toml`             | Validates that `pyproject.toml` and other TOML files are correctly formatted and parseable. |
 
 Run all hooks on all files manually using `pre-commit run --all-files`
+
+```
+docker build -f docker/Dockerfile \
+  -t 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest \
+  .
+```
+
+```
+docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/models:/app/models" -v "$(pwd)/cache:/app/cache" -v "$(pwd)/reports:/app/reports" 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest
+```
