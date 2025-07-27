@@ -172,6 +172,7 @@ class Trainer:
             raise KeyboardInterrupt from e
 
         if save:
+            print("✅ Training completed. Saving final model checkpoint...")
             self.save(num_epochs)
 
     def predict_from_val(self, indices: list[int]):
@@ -330,18 +331,15 @@ class Trainer:
         dataset_df: pd.DataFrame,
         model_class: torch.nn.Module,
         hyperparams: dict,
+        _id : str,
     ):
         import hashlib
         import json
 
         hyperparams = hyperparams.copy()
 
-        param_str = json.dumps(hyperparams, sort_keys=True)
-        param_hash = hashlib.md5(param_str.encode()).hexdigest()
-        model_pth = f"{model_class.__name__.lower()}_mdn_{param_hash}_checkpoint.pth"
+        model_pth = f"{model_class.__name__.lower()}_{_id}_checkpoint.pth"
 
-        print(f"Model path: {model_pth}")
-        # print("Hyperparameters:", hyperparams)
         training_dataset, validation_dataset = generate_datasets(
             dataset_df,
             lookback=hyperparams.pop("lookback_days") * 24,
@@ -373,9 +371,7 @@ class Trainer:
     ):
         best_trial = study.best_trial
         hyperparams = best_trial.params
-        # print(hyperparams)
 
-        # print(f"Best trial hyperparameters: {hyperparams}")
         return Trainer.from_template(
-            dataset_df=dataset_df, model_class=model_class, hyperparams=hyperparams
+            dataset_df=dataset_df, model_class=model_class, hyperparams=hyperparams, _id=best_trial.number
         )

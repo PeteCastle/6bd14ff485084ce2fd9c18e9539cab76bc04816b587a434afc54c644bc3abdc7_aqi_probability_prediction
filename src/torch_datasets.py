@@ -1,7 +1,7 @@
 import hashlib
 import os
 import pickle
-
+import random
 import numpy as np
 import pandas as pd
 import torch
@@ -136,7 +136,10 @@ def generate_datasets(
 ) -> tuple[ConcatDatasetWithMetadata, ConcatDatasetWithMetadata]:
     training_datasets = []
     validation_datasets = []
-    for city, group in (pbar := tqdm(dataset_df.groupby("city_name"))):
+    grouped_items = list(dataset_df.groupby("city_name"))
+    random.shuffle(grouped_items)
+
+    for city, group in (pbar := tqdm(grouped_items)):
         pbar.set_description(f"Processing {city}")
         group.sort_index(ascending=True, inplace=True)
 
