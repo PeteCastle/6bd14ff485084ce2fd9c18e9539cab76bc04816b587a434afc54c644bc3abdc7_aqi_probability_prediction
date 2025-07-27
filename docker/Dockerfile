@@ -4,7 +4,6 @@ RUN apt-get update && apt-get install -y bash
 ARG BACKEND=cpu  # default backend
 
 ENV PYTORCH_ENABLE_MPS_FALLBACK=0
- # Disable MPS fallback for PyTorch
 
 RUN pip install uv
 

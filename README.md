@@ -175,3 +175,24 @@ docker build -f docker/Dockerfile \
 ```
 docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/models:/app/models" -v "$(pwd)/cache:/app/cache" -v "$(pwd)/reports:/app/reports" 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest
 ```
+
+
+```
+docker-compose -f docker/docker-compose.yml run airflow-webserver airflow db migrate
+```
+
+```
+docker-compose -f docker/docker-compose.yml run airflow-webserver airflow cli users create \
+  --username admin \
+  --password admin \
+  --firstname Admin \
+  --lastname User \
+  --role Admin \
+  --email admin@example.com
+```
+
+```
+docker compose -f docker/docker-compose.yml up --build  
+```
+
+

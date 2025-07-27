@@ -213,3 +213,9 @@ models/*
 !models/.gitkeep
 
 cache/*
+cache/.gitkeep
+
+reports/*
+!reports/sample
+
+airflow/logs
