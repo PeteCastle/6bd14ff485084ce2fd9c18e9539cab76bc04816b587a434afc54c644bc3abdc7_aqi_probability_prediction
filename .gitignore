@@ -219,3 +219,5 @@ reports/*
 !reports/sample
 
 airflow/logs
+
+.DS_STORE

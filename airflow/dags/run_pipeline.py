@@ -77,7 +77,7 @@ with DAG(
         op_kwargs={
             "model_name": "lstm",
             "objective_func": lstm_mdn_objective,
-            "num_trials": "{{ 1 if  v else params.num_trials }}",
+            "num_trials": "{{ 1 if params.dry_run else params.num_trials }}",
             "num_epochs": "{{ 1 if params.dry_run else params.num_epochs }}"
         },
         retries=2,

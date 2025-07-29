@@ -173,7 +173,7 @@ docker build -f docker/Dockerfile \
 ```
 
 ```
-docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/models:/app/models" -v "$(pwd)/cache:/app/cache" -v "$(pwd)/reports:/app/reports" 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest
+docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/models:/app/models" -v "$(pwd)/cache:/app/cache" -v "$(pwd)/reports:/app/reports" 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest --dry-run
 ```
 
 

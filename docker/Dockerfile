@@ -19,5 +19,6 @@ RUN uv pip install .[${BACKEND}]
 
 COPY src ./src
 
-CMD ["python", "-m", "src.run_pipeline"]
+ENTRYPOINT ["python", "-m", "src.run_pipeline"]
+CMD []
 

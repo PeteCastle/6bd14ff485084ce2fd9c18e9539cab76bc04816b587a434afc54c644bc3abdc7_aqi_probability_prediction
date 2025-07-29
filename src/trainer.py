@@ -338,7 +338,11 @@ class Trainer:
 
         hyperparams = hyperparams.copy()
 
-        model_pth = f"{model_class.__name__.lower()}_{_id}_checkpoint.pth"
+        hyperparams_hash = hashlib.md5(
+            json.dumps(hyperparams, sort_keys=True).encode("utf-8")
+        ).hexdigest()
+
+        model_pth = f"{model_class.__name__.lower()}_{hyperparams_hash}_checkpoint.pth"
 
         training_dataset, validation_dataset = generate_datasets(
             dataset_df,
