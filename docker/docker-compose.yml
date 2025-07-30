@@ -1,23 +1,10 @@
+---
 x-airflow-common:
   &airflow-common
   build:
     context: ${PWD}          # project root
-    dockerfile: airflow/Dockerfile
-  environment:
-    AIRFLOW__API__BASE_URL: http://airflow-webserver:8080
-    AIRFLOW__API_AUTH__JWT_SECRET : mysecretdasfa31dsfa
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
-    AIRFLOW__CORE__FERNET_KEY: ''
-    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-    AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
-    # AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS: "True"
-    AIRFLOW__CELERY__BROKER_URL: redis://redis:6379/0
-    AIRFLOW__CELERY__RESULT_BACKEND: redis://redis:6379/1
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__API__SECRET_KEY: mysecretkey
-    OPTUNA_DATABASE_URL: postgresql://airflow:airflow@postgres/optuna
-    PYTHONPATH: /opt/airflow
+    dockerfile: docker/airflow.Dockerfile
+  env_file: ${PWD}/config/.env
   volumes:
     - ${PWD}/airflow/logs:/opt/airflow/logs
     - ${PWD}/models:/opt/airflow/models
@@ -25,6 +12,7 @@ x-airflow-common:
     - ${PWD}/airflow/dags:/opt/airflow/dags
     - ${PWD}/src:/opt/airflow/src
     - ${PWD}/reports:/opt/airflow/reports
+    - ${PWD}/config/airflow.cfg:/opt/airflow/airflow.cfg
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     - redis
@@ -44,22 +32,15 @@ services:
     image: postgres:13
     depends_on:
       - postgres
-    entrypoint: >
-      bash -c "
-      until pg_isready -h postgres -U airflow; do sleep 1; done;
-      psql -h postgres -U airflow -tc \"SELECT 1 FROM pg_database WHERE datname = 'optuna'\" | grep -q 1 || psql -h postgres -U airflow -c 'CREATE DATABASE optuna';
-      "
-
-    environment:
-      PGPASSWORD: airflow
+    volumes:
+      - ${PWD}/scripts/init-optuna-db.sh:/init-optuna-db.sh
+    command: ["bash", "-c", "chmod +x /init-optuna-db.sh && /init-optuna-db.sh"]
+    env_file: ${PWD}/config/.env
 
   airflow-init:
     <<: *airflow-common
-    entrypoint: >
-      bash -c "
+    command: >
       airflow db migrate
-      "
-
 
   redis:
     image: redis:7
@@ -79,14 +60,14 @@ services:
     depends_on:
       - airflow-init
       - optuna-init
-  
+
   airflow-trigerrer:
     <<: *airflow-common
     command: airflow triggerer
     depends_on:
       - airflow-init
       - optuna-init
-  
+
   airflow-dag-processor:
     <<: *airflow-common
     command: airflow dag-processor

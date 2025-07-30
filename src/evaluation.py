@@ -40,7 +40,10 @@ def calculate_baseline(dataset_df: pd.DataFrame):
 
 
 def run_evaluation(
-    study: dict, dataset_df: pd.DataFrame, generate_report: bool = False, report_folder: str = ""
+    study: dict,
+    dataset_df: pd.DataFrame,
+    generate_report: bool = False,
+    report_folder: str = "",
 ):
     trainers = {
         "LSTM-MDN": Trainer.from_best_optuna_trial(study["lstm"], dataset_df, LSTM_MDN),
@@ -78,7 +81,9 @@ def run_evaluation(
     visualizer = MDNVisualizer(best_trainer, report_folder)
 
     if generate_report:
-        compare_model_performance(*[trainer for trainer in trainers.values()], report_folder=report_folder)
+        compare_model_performance(
+            *[trainer for trainer in trainers.values()], report_folder=report_folder
+        )
         save_model_performance(best_trainer, report_folder=report_folder)
         visualizer.save_timeseries_from_val(
             sample_indeces, num_targets=None, title="Example Timeseries"

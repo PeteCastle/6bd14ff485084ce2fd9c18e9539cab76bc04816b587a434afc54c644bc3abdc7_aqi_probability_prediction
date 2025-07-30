@@ -221,3 +221,9 @@ reports/*
 airflow/logs
 
 .DS_STORE
+
+airflow.cfg
+.env
+
+!airflow.cfg.sample
+!.env.sample

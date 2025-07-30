@@ -1,6 +1,6 @@
 FROM apache/airflow:slim-3.0.3-python3.10
 
-USER root 
+USER root
 
 ARG BACKEND=cpu  # default backend
 RUN apt-get update && apt-get install -y bash

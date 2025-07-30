@@ -1,3 +1,4 @@
+---
 repos:
   - repo: https://github.com/psf/black
     rev: 24.4.2
@@ -31,3 +32,10 @@ repos:
     rev: v4.5.0
     hooks:
       - id: check-toml
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.37.1
+    hooks:
+      - id: yamllint
+        name: YAML linting
+        files: \.ya?ml$

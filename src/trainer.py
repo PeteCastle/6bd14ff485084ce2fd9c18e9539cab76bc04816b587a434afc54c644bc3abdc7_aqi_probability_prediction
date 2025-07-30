@@ -78,6 +78,8 @@ class Trainer:
 
         self.history = {"train_loss": [], "val_loss": [], "training_time": []}
 
+        print("Model path:", self.model_pth)
+        print(self.model_pth)
         self.start_epoch = (
             self.load(self.model_pth) if os.path.exists(self.model_pth) else 0
         )
@@ -331,7 +333,7 @@ class Trainer:
         dataset_df: pd.DataFrame,
         model_class: torch.nn.Module,
         hyperparams: dict,
-        _id : str,
+        _id: str,
     ):
         import hashlib
         import json
@@ -342,7 +344,7 @@ class Trainer:
             json.dumps(hyperparams, sort_keys=True).encode("utf-8")
         ).hexdigest()
 
-        model_pth = f"{model_class.__name__.lower()}_{hyperparams_hash}_checkpoint.pth"
+        model_pth = f"{model_class.__name__.lower()}_{hyperparams}_checkpoint.pth"
 
         training_dataset, validation_dataset = generate_datasets(
             dataset_df,
@@ -377,5 +379,8 @@ class Trainer:
         hyperparams = best_trial.params
 
         return Trainer.from_template(
-            dataset_df=dataset_df, model_class=model_class, hyperparams=hyperparams, _id=best_trial.number
+            dataset_df=dataset_df,
+            model_class=model_class,
+            hyperparams=hyperparams,
+            _id=best_trial.number,
         )

@@ -116,7 +116,10 @@ class MDNVisualizer:
         )
         plt.tight_layout()
 
-        fig.savefig(OUTPUT_DIR / self.report_folder / "01_timeseries_forecast.png", bbox_inches="tight")
+        fig.savefig(
+            OUTPUT_DIR / self.report_folder / "01_timeseries_forecast.png",
+            bbox_inches="tight",
+        )
         # plt.show()
 
     def save_mixture_distributions_at_timestep(
@@ -241,7 +244,11 @@ class MDNVisualizer:
 
         base_size = Image.open(frame_paths[0]).size
         images = [Image.open(fp).resize(base_size) for fp in frame_paths]
-        imageio.mimsave(OUTPUT_DIR / self.report_folder / f"04_mixture_evolution.gif", images, duration=0.8)
+        imageio.mimsave(
+            OUTPUT_DIR / self.report_folder / f"04_mixture_evolution.gif",
+            images,
+            duration=0.8,
+        )
 
         for fp in frame_paths:
             os.remove(fp)
@@ -390,7 +397,10 @@ def save_model_performance(trainer, report_folder=""):
         color="black",
     )
 
-    fig.savefig(OUTPUT_DIR / report_folder / f"02_best_model_performance.png", bbox_inches="tight")
+    fig.savefig(
+        OUTPUT_DIR / report_folder / f"02_best_model_performance.png",
+        bbox_inches="tight",
+    )
 
     return fig
 
@@ -417,6 +427,9 @@ def compare_model_performance(*trainers, report_folder=""):
 
     plt.tight_layout()
 
-    fig.savefig(OUTPUT_DIR / report_folder / "03_model_performance_comparison.png", bbox_inches="tight")
+    fig.savefig(
+        OUTPUT_DIR / report_folder / "03_model_performance_comparison.png",
+        bbox_inches="tight",
+    )
 
     return fig

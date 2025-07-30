@@ -24,7 +24,9 @@ def lstm_mdn_objective(trial, dataset_df: pd.DataFrame, num_epochs: int = 30):
         trial.suggest_categorical("step", [1, 2, 3, 4, 6])  # hours between timesteps
         trial.suggest_float("dropout", 0.0, 0.5)
 
-        trainer = Trainer.from_template(dataset_df, LSTM_MDN, trial.params, trial.number)
+        trainer = Trainer.from_template(
+            dataset_df, LSTM_MDN, trial.params, trial.number
+        )
         trainer.train(num_epochs=num_epochs)
 
         return trainer.history["val_loss"][-1]
@@ -109,7 +111,9 @@ def transformer_mdn_objective(trial, dataset_df: pd.DataFrame, num_epochs: int =
         trial.suggest_categorical("lookback_days", [1, 2, 4])
         trial.suggest_categorical("step", [1, 2, 3, 4, 6])
 
-        trainer = Trainer.from_template(dataset_df, Transformer_MDN, trial.params, trial.number)
+        trainer = Trainer.from_template(
+            dataset_df, Transformer_MDN, trial.params, trial.number
+        )
         trainer.train(num_epochs=num_epochs)
 
         return trainer.history["val_loss"][-1]

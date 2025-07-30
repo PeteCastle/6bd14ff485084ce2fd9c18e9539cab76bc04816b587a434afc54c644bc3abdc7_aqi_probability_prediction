@@ -167,7 +167,7 @@ This project uses [**pre-commit**](https://pre-commit.com/) to ensure consistent
 Run all hooks on all files manually using `pre-commit run --all-files`
 
 ```
-docker build -f docker/Dockerfile \
+docker build -f docker/pipeline.Dockerfile \
   -t 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest \
   .
 ```
@@ -192,7 +192,5 @@ docker-compose -f docker/docker-compose.yml run airflow-webserver airflow cli us
 ```
 
 ```
-docker compose -f docker/docker-compose.yml up --build  
+docker compose -f docker/docker-compose.yml up --build
 ```
-
-
