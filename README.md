@@ -167,7 +167,7 @@ This project uses [**pre-commit**](https://pre-commit.com/) to ensure consistent
 Run all hooks on all files manually using `pre-commit run --all-files`
 
 ```
-docker build -f docker/pipeline.Dockerfile \
+docker build -f deploy/docker/pipeline.Dockerfile \
   -t 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest \
   .
 ```
@@ -178,11 +178,11 @@ docker run --rm -v "$(pwd)/data:/app/data" -v "$(pwd)/models:/app/models" -v "$(
 
 
 ```
-docker-compose -f docker/docker-compose.yml run airflow-webserver airflow db migrate
+docker-compose -f deploy/docker/docker-compose.yml run airflow-webserver airflow db migrate
 ```
 
 ```
-docker-compose -f docker/docker-compose.yml run airflow-webserver airflow cli users create \
+docker-compose -f deploy/docker/docker-compose.yml run airflow-webserver airflow cli users create \
   --username admin \
   --password admin \
   --firstname Admin \
@@ -191,6 +191,7 @@ docker-compose -f docker/docker-compose.yml run airflow-webserver airflow cli us
   --email admin@example.com
 ```
 
+### Tests
 ```
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver airflow tasks test model_training_pipeline prepare_data 2025-07-31
 ```

@@ -3,13 +3,13 @@ x-airflow-common:
   &airflow-common
   build:
     context: ${PWD}          # project root
-    dockerfile: docker/airflow.Dockerfile
+    dockerfile: deploy/docker/airflow.Dockerfile
   env_file: ${PWD}/config/.env
   volumes:
-    - ${PWD}/airflow/logs:/opt/airflow/logs
+    - ${PWD}/deploy/airflow/logs:/opt/airflow/logs
     - ${PWD}/models:/opt/airflow/models
     - ${PWD}/cache:/opt/airflow/cache
-    - ${PWD}/airflow/dags:/opt/airflow/dags
+    - ${PWD}/deploy/airflow/dags:/opt/airflow/dags
     - ${PWD}/src:/opt/airflow/src
     - ${PWD}/reports:/opt/airflow/reports
     - ${PWD}/config/airflow.cfg:/opt/airflow/airflow.cfg
@@ -39,8 +39,10 @@ services:
 
   airflow-init:
     <<: *airflow-common
-    command: >
+    entrypoint: >
+      bash -c "
       airflow db migrate
+      "
 
   redis:
     image: redis:7

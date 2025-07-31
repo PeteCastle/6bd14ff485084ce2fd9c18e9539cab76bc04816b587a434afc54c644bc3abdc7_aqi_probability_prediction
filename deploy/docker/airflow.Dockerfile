@@ -27,4 +27,4 @@ USER root
 RUN chmod -R a+w /opt/airflow/data
 USER airflow
 # COPY airflow/dags /opt/airflow/dags
-COPY airflow/plugins /opt/airflow/plugins
+COPY deploy/airflow/plugins /opt/airflow/plugins
