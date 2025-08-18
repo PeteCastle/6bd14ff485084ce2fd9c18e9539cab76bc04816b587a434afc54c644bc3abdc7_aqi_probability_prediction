@@ -70,7 +70,7 @@ def evaluate_all(**context):
 
 
 with DAG(
-    dag_id="model_training_pipeline",
+    dag_id="ml_pipeline_dag",
     params={
         "num_trials": Param(30, type="integer", minimum=1),
         "num_epochs": Param(30, type="integer", minimum=1),

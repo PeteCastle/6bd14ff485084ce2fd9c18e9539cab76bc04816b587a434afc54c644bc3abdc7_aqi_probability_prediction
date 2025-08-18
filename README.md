@@ -90,8 +90,8 @@ docker compose -f deploy/docker/docker-compose.yml logs -f airflow-worker
 #### 6. Running the Pipeline
 Access the Airflow web interface and DAGs at `http://localhost:8080/dags`.
 ![Airflow DAGs](docs/assets/airflow_dags.png)
-Click on `model_training_pipeline` to view the DAG details.
-![Model Training Pipeline](docs/assets/model_training_pipeline.png)
+Click on `ml_pipeline_dag` to view the DAG details.
+![Model Training Pipeline](docs/assets/ml_pipeline_dag.png)
 Click on `Trigger` to run the pipeline manually
 ![Pipeline Trigger](docs/assets/pipeline_trigger.png)
 Modify parameters if you want to specify the number of trials, epochs, or in dry run.  Note that in Airflow setup, the script will always generate a report after training and evaluation.
@@ -100,17 +100,17 @@ Modify parameters if you want to specify the number of trials, epochs, or in dry
 To test the pipeline, you can trigger the `prepare_data` task directly from the Airflow UI or use the command line:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
-  airflow dags trigger model_training_pipeline
+  airflow dags trigger ml_pipeline_dag
 ```
 You may also se the `--conf` flag to pass in parameters:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
-  airflow dags trigger model_training_pipeline \
+  airflow dags trigger ml_pipeline_dag \
   --conf '{"dry_run": true}'
 ```
 You may also test the `prepare_data` task directly using the command line:
 ```
-docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver airflow tasks test model_training_pipeline prepare_data 2025-07-31
+docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver airflow tasks test ml_pipeline_dag prepare_data 2025-07-31
 ```
 
 ### Method 2: Docker Setup
