@@ -61,7 +61,7 @@ def evaluate_all(**context):
     }
     dataset_df = context["ti"].xcom_pull(task_ids="prepare_data", key="dataset_df")
 
-    report_folder = "dry_runs/" if context["params"]["dry_run"] else "/"
+    report_folder = "dry_runs/" if context["params"]["dry_run"] else ""
     report_folder += context["dag_run"].run_id
 
     run_evaluation(

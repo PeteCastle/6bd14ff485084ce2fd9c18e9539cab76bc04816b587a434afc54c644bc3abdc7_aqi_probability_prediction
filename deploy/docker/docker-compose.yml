@@ -13,10 +13,20 @@ x-airflow-common:
     - ${PWD}/src:/opt/airflow/src
     - ${PWD}/reports:/opt/airflow/reports
     - ${PWD}/config/airflow.cfg:/opt/airflow/airflow.cfg
+    - ${PWD}/mlflow:/mlflow
+    
+    
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     - redis
     - postgres
+  deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
 services:
   postgres:
@@ -25,8 +35,29 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 3
+      start_period: 5s
+
+  mlflow:
+    build:
+      context: ${PWD}        
+      dockerfile: deploy/docker/Dockerfile.mlflow
+    ports:
+      - "5000:5000"
+    env_file: ${PWD}/config/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      # - mlflow-artifacts:/mlflow/artifacts
+      - ${PWD}/mlflow:/mlflow
 
   optuna-init:
     image: postgres:13
@@ -34,7 +65,8 @@ services:
       - postgres
     volumes:
       - ${PWD}/scripts/init-optuna-db.sh:/init-optuna-db.sh
-    command: ["bash", "-c", "chmod +x /init-optuna-db.sh && /init-optuna-db.sh"]
+      - ${PWD}/scripts/init-mlflow-db.sh:/init-mlflow-db.sh
+    command: ["bash", "-c", "chmod +x /init-optuna-db.sh && /init-optuna-db.sh && chmod +x /init-mlflow-db.sh && /init-mlflow-db.sh"]
     env_file: ${PWD}/config/.env
 
   airflow-init:
@@ -58,7 +90,7 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
+    command: airflow scheduler
     depends_on:
       - airflow-init
       - optuna-init
@@ -79,20 +111,27 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    command: airflow celery worker
     hostname: airflow-worker
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
     depends_on:
       - airflow-init
-      - optuna-init
+      - optuna-init 
 
   airflow-flower:
     <<: *airflow-common
     ports:
-      - "5555:5555"
-    command: celery flower
+      - "5556:5555"
+    command: airflow celery flower
     depends_on:
       - airflow-init
       - optuna-init
+    environment:
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
 
 volumes:
   postgres-db-volume:
+  # mlflow-artifacts:

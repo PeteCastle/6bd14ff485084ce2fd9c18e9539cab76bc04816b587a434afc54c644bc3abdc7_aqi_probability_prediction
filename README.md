@@ -421,3 +421,17 @@ Run all hooks on all files manually using `pre-commit run --all-files`
 Throughout the development of this containerized ML pipeline and Airflow orchestration setup, several challenges emerged—particularly around compatibility and platform limitations. One notable issue involved the `pre-commit` hook setup: while `hadolint` is a useful tool for linting Dockerfiles, it was not functioning properly on macOS due to issues with the executable, leading to its removal from the configuration. Additionally, running Docker with GPU support proved difficult. macOS does not support GPU passthrough in Docker, which made it impossible to enable Metal (MPS) acceleration in containers. To work around this, I experimented with deploying the setup on an AWS EC2 instance equipped with a GPU. However, the added complexity of configuring networking, updating `docker-compose.yml` to support GPU runtime, and rewriting the `airflow.Dockerfile` to use NVIDIA’s CUDA base image with a multi-stage build introduced significant overhead—too much for a learning-focused environment. I consider this a potential area for future improvement, perhaps integrating GPU acceleration for large-scale training tasks.
 
 Another practical issue encountered was port conflicts—Airflow's webserver runs on port 8080, which is commonly used by other local services. I had to manually ensure that port mappings did not interfere with existing applications. Environment variable configuration was also a source of initial confusion. Some variables I used were outdated or renamed in newer versions of Airflow (3.3.0), which caused certain components to fail silently. This taught me the importance of verifying environment variable names directly from the official documentation rather than relying on outdated references. In fact, one broader takeaway is that while ChatGPT is helpful for scaffolding and quick references, it sometimes provides instructions that are inconsistent with the latest Airflow release. As such, cross-checking with the official docs remains essential for accurate and up-to-date setup instructions.
+
+
+Amazon linux:
+```
+docker compose -f deploy/docker/docker-compose.yml up --build  
+```
+```
+docker-compose -f deploy/docker/docker-compose.yml down
+```
+
+### docker amazonl inux with nvidia installed
+sudo yum update -y
+
+sudo chmod -R a+rw .

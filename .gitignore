@@ -227,3 +227,7 @@ airflow.cfg
 
 !airflow.cfg.sample
 !.env.sample
+
+mlflow/
+!mlflow/artifacts/.gitkeep
+!mlflow/mlruns/.gitkeep

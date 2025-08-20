@@ -25,7 +25,9 @@ dependencies = [
   "psycopg2-binary==2.9.10",
   "asyncpg==0.30.0",
   "flask-appbuilder==4.8.0",
-  "pyarrow==21.0.0"
+  "pyarrow==20.0.0",
+  "mlflow==3.1.4",
+  "evidently==0.7.11"
 ]
 
 [project.optional-dependencies]

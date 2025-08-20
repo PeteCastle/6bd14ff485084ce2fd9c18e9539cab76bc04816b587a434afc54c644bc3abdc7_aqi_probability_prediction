@@ -7,7 +7,7 @@ import torch
 
 from src.constants import OUTPUT_DIR, POLLUTANT_COLUMNS
 from src.model_training import GRU_MDN, LSTM_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
-from src.trainer import Trainer
+from src.model_training import Trainer
 from src.visualizers import (
     MDNVisualizer,
     compare_model_performance,
@@ -76,6 +76,8 @@ def run_evaluation(
 
     sample_indeces = range(0, 100)
 
+    print("outputting results to dir", OUTPUT_DIR)
+    print("making dir", OUTPUT_DIR / report_folder)
     os.makedirs(OUTPUT_DIR / report_folder, exist_ok=True)
 
     visualizer = MDNVisualizer(best_trainer, report_folder)
