@@ -32,8 +32,6 @@ Sources:
 - [2023 to 2024 Data (Kaggle)](https://www.kaggle.com/datasets/bwandowando/philippine-major-cities-air-quality-data)
 - [2025 Data (Kaggle)](https://www.kaggle.com/datasets/bwandowando/philippine-cities-air-quality-index-data-2025/data)
 
-Note: The data structure in Kaggle might've changed and updated since we last accessed it.
-
 ## Setup Instructions
 > Notes for Methods 1 and 2:
 > - CUDA GPU support in Docker is currently a work in progress.
@@ -240,201 +238,106 @@ To run a quick dry run with minimal settings, and generate a sample report:
 python -m src.run_pipeline --dry-run --generate-report
 ```
 
-## Docker Integration
-This project uses Docker to containerize both the core ML pipeline and the Airflow orchestration environment. It supports reproducible builds and isolated dependency management across development and production workflows.
+## MLFlow Integration
+This project integrates MLflow as the primary MLOps platform for experiment tracking, model management, and deployment pipeline orchestration.  It follows a distributed approach where tracking capabilities are embedded throughout the ML pipeline rather than centralized in a single location.
 
-There are two main Dockerfiles:
+All model training activities are consolidated under a single experiment named `"aqi_mdn_experiment"`.
 
----
+The MLflow tracking server is configured to use a containerized Mlflow server, or an Sqlite if not available.
 
-#### `pipeline.Dockerfile`
+The tracking URI can be found in `http://localhost:5000` for Dockerized Airflow setup, and `sqlite:///mlflow.db` for local or non-Airflow setups.
 
-Located at: `deploy/docker/pipeline.Dockerfile`
+Contrary to the given requirements to log exactly 3 hyperparameters, I logged all hyperparameters since they are relevant for reproducibility and model retraining.
 
-This Dockerfile is optimized for **standalone pipeline execution** (outside of Airflow). It uses **multi-stage builds** to reduce the final image size by excluding unnecessary build-time tools.
+### Experiment Tracking
+The Trainer class was designed to inherit from `mlflow.pyfunc.PythonModel`, making every trained model inherently deployable through MLflow's serving infrastructure.
+- Automatically generates descriptive run names.
+- Implements conditional saving logic that only persists models achieving new best performance for their specific architecture class.
+- Saves complete model state including weights, hyperparameters, etc.
+- The `val_loss` and `train_loss` metrics are logged in Mlflow, as well as the `name` of the model architecture.
 
-#### `airflow.Dockerfile`
-This image extends `apache/airflow:slim` and installs project-specific dependencies required by DAGs. It is used by all Airflow-related services in the docker-compose stack.
+### Best Model Selection
+- During model evaluation, the program queries MLflow's experiment database to compare current model performance against historical runs.
+- In logging,
+- Only saves models that achieve superior validation performance.
 
-Key Features:
-- Inherits from official Airflow base image.
-- Installs project dependencies via uv using `pyproject.toml`.
-- Uses the `BACKEND` build arg for conditional dependency groups.
-- Mounts `src/`, `data/`, `plugins/`, and `dags/` for DAG execution.
+### Registration Implementation:**
+The performance criterion is where the `val_loss` (negative log likelihood) is less than `-3`.  This value is the baseline negative log likelihood.  A metric to determine if the model outbeats the random guessing scenario.  When a model meets the performance criteria, the system automatically:
+1. Generates a standardized model name following the pattern `aqi_prediction_{model_type}`.
+2. Registers the model using the current MLflow run ID as the source.
 
-#### `docker-compose.yml`
-This file orchestrates all services needed to run Apache Airflow and Optuna in a containerized environment. It includes:
-| Service                 | Purpose                                                                                      |
-|-------------------------|----------------------------------------------------------------------------------------------|
-| `postgres`              | Metadata database for Airflow and Optuna.                                                    |
-| `redis`                 | Message broker for Celery workers.                                                           |
-| `airflow-webserver`     | Hosts the Airflow UI at [http://localhost:8080](http://localhost:8080).                      |
-| `airflow-scheduler`     | Schedules DAGs and determines when tasks should run.                                         |
-| `airflow-worker`        | Executes Python tasks in parallel via Celery.                                                |
-| `airflow-triggerer`     | Executes deferrable operators (optional).                                                    |
-| `airflow-dag-processor` | Parses DAG files separately from the scheduler for better scalability.                       |
-| `airflow-flower`        | Web-based monitoring tool for Celery tasks, available at [http://localhost:5555](http://localhost:5555). |
-| `airflow-init`          | One-time job that initializes the Airflow metadata database (`airflow db migrate`).          |
-| `optuna-init`           | One-time script that initializes the Optuna PostgreSQL schema using `scripts/init-optuna-db.sh`. |
+### Model Retrieval
+Implements a "best-of-breed" approach where the system automatically identifies and loads the best performing model for each architecture type from MLflow's experiment database.
 
+## Model Drift Detection
+The drift detection system is integrated into both the standalone pipeline (`run_pipeline.py`) and the orchestrated Airflow DAG (`ml_pipeline_dag.py`). It operates as a quality gate that validates model performance by comparing reference data against current validation data.
 
-## Airflow DAG
-This DAG orchestrates a full model training and evaluation pipeline using Optuna for hyperparameter tuning. It leverages Airflow’s native `PythonOperator` and XComs for inter-task communication.
+In the function `detect_drift(reference_data_path, current_data_path)` in `src/drift_detection.py`, the system uses the Evidently library with DataDriftPreset for statistical drift analysis. It is configured with a drift threshold of 0.2 (20%) and automatically excludes the target column to focus on feature drift. There is feature-level drift scoring with ranking of the most drifted features, and it generates a JSON report for detailed analysis.
 
-### DAG Structure
-![alt text](docs/assets/dag_structure.png)
+The output is saved in `reports/drift_report.json` and includes:
+- `drift_detected`: Boolean indicating if overall drift exceeds threshold
+- `feature_drifts`: Dictionary of top 3 most drifted features with scores
+- `overall_drift_score`: Average drift score across all features
 
-### 🧩 DAG Overview
+### Integration Strategy
+#### Pipeline Integration
+In standalone pipeline (`run_pipeline.py`), drift detection is integrated as a post-evaluation step.  If drift is detected, it raises an exception stating that a model retraining is required.
 
-| Task ID             | Description                                                                 |
-|---------------------|-----------------------------------------------------------------------------|
-| `prepare_data`       | Loads, preprocesses, and feature-engineers the dataset. Pushes the result via XCom. |
-| `train_*`            | Trains one of five model architectures (LSTM, GRU, RNN, TCN, Transformer) using Optuna. |
-| `evaluate_results`   | Loads the trained studies, evaluates model performance, and generates a report. |
-### Dependencies
+### DAG Integration
+The Airflow DAG provides a more sophisticated orchestration with conditional branching. Drift detection runs after model evaluation If drift is detected, it triggers a retraining of the model.
 
-- `prepare_data` must run **before** any training task.
-- All training tasks run **in parallel** and independently of one another.
-- `evaluate_results` waits for **all training tasks** to complete.
+### Drifted Data Generation
+Drifted data generation occurs in the `feature_engineering` step rather than `data_preprocessing`. This design decision ensures that:
+- The model receives fully processed data for time series transformation
+- Drift simulation happens on feature-engineered data that matches production input format
+- Time series preprocessing maintains temporal relationships
 
-
-### DAG Configuration
-
-The DAG accepts the following runtime parameters:
-
-| Parameter      | Type     | Default | Description                                                 |
-|----------------|----------|---------|-------------------------------------------------------------|
-| `num_trials`   | `int`    | `30`    | Number of Optuna trials to run per model.                   |
-| `num_epochs`   | `int`    | `30`    | Number of training epochs for each trial.                   |
-| `dry_run`      | `bool`   | `False` | If `True`, overrides both trials and epochs to `1`. Used for fast debugging. |
-
-### Scheduling Rationale
-- `catchup=False`: prevents backfilling when the DAG is first deployed or restarted.
-- `max_active_runs=1`: ensures no overlapping runs, preserving consistency when models are written to shared output folders.
-### Monitoring DAGs in Airflow UI
-
-You can monitor the DAG execution at:
-`http://localhost:8080`
-Use the **Graph View** to understand dependencies, and check individual **Task Logs** to view stdout/stderr, Optuna logs, or error traces. View task queues and states in **Flower UI**: `http://localhost:5555`
-
-### Scaling with Celery Executor
-The DAG is designed to run each model training task independently and is already setup in `docker-compose.yml`.
-
-To scale:
-- Add more Airflow workers in `docker-compose.yml`.
-- Tune `concurrency` and `parallelism` in `airflow.cfg`.
-- Use `resources` or `priority_weight` for fine-grained control over task allocation.
+The `preprocess_data` function does not return separate drifted and original datasets as tuples because:
+- Train-test split occurs during model training phase
+- This aligns with the project's time series nature where temporal splits are more appropriate
+- Allows for more flexible data handling in the training pipeline.
 
 ## Folder Structure
-This project follows a modular, reproducible structure tailored for machine learning workflows and containerized orchestration via Docker and Apache Airflow.
+The following table shows the new files and modifications added to support drift detection and MLflow integration compared to the previous assignment:
 
+| File/Directory | Type | Description |
+|----------------|------|-------------|
+| `deploy/airflow/dags/ml_pipeline_dag.py` | Modified | Enhanced DAG with drift detection task, conditional branching logic, and automated retraining when drift is detected. Separated data preparation into two distinct tasks: preprocessing and feature engineering. |
+| `deploy/docker/Dockerfile.mlflow` | New | Dockerfile for MLflow service deployment to support experiment tracking and model registry functionality. |
+| `deploy/docker/airflow.Dockerfile` | Modified | Updated to use CUDA base image instead of standard Airflow image to enable GPU support for model training. Previous version renamed to `airflow.old.Dockerfile`. |
+| `deploy/docker/airflow.old.Dockerfile` | Renamed | Original Airflow Dockerfile preserved for reference. |
+| `deploy/docker/docker-compose.yml` | Modified | Added MLflow service configuration and improved startup behavior with proper service dependencies to ensure correct initialization order. |
+| `notebooks/00_download_data.ipynb` | New | Jupyter notebook for downloading data from Kaggle with interactive data exploration capabilities. |
+| `notebooks/03_drift_detection.ipynb` | New | Interactive notebook demonstrating drift detection analysis, visualization, and experimentation with different drift scenarios. |
+| `pyproject.toml` | Modified | Added new dependencies for drift detection (Evidently), MLflow integration, and enhanced data processing capabilities. |
+| `scripts/init-mlflow-db.sh` | New | Shell script for initializing MLflow database and setting up the tracking server environment. |
+| `src/data_ingestion.py` | New | Script version of data download functionality from Kaggle, providing programmatic access to dataset retrieval. |
+| `src/drift_detection.py` | New | Core drift detection module implementing statistical analysis, feature-level drift scoring, and automated reporting using Evidently library. |
+| `src/evaluation.py` | Modified | Enhanced with MLflow integration for experiment logging, model result persistence, and automated model registration in the MLflow model registry. |
+| `src/feature_engineering.py` | Modified | Added functionality for generating drifted datasets for testing purposes and utility functions for converting PyTorch datasets to pandas DataFrames. |
+| `src/run_pipeline.py` | Modified | Integrated MLflow experiment tracking and drift detection logic with conditional pipeline execution based on drift analysis results. |
+| `src/utils.py` | Modified | Added helper functions for MLflow server initialization and configuration management to ensure consistent tracking setup across different environments. |
+
+## Testing Instructions
+### Test Standalone Pipeline
+```bash
+python -m src.run_pipeline --dry-run --generate-report
 ```
-aqi-probability-prediction/
-│
-├── .vscode/
-│   └── Editor-specific settings for VSCode.
-│
-├── cache/
-│   └── Temporary files and intermediate artifacts such as checkpoints and cached datasets.
-│
-├── config/
-│   ├── .env.sample             # Sample environment variables for Docker and Airflow
-│   └── airflow.cfg.sample      # Sample Airflow configuration file
-│   └── Ensures reproducible and configurable Airflow/Docker deployments across machines.
-│
-├── data/
-│   ├── raw/
-│   │   └── Original datasets as collected or received. Keeping them unmodified ensures full reproducibility.
-│   └── processed/
-│       └── Cleaned, transformed, and feature-engineered datasets ready for modeling.
-│
-├── deploy/
-│   ├── airflow/
-│   │   ├── dags/               # Isolated Airflow DAGs for orchestration. Promotes modular, testable workflow definitions.
-│   │   ├── logs/               # Airflow logs. Mounted as a volume for inspection and debugging.
-│   │   └── plugins/            # Custom Airflow plugins or operators, if needed.
-│   └── docker/
-│       ├── .dockerignore       # Ignore unnecessary files during image builds.
-│       ├── airflow.Dockerfile  # Base image for running Airflow with necessary dependencies.
-│       ├── pipeline.Dockerfile # Lightweight image to run the ML pipeline without Airflow (CLI-style).
-│       └── docker-compose.yml  # Defines and manages all services needed for Airflow orchestration.
-│
-├── docs/
-│   └── assets/                 # Images and diagrams for the README or documentation.
-│
-├── models/
-│   └── Trained model artifacts, including weights and saved checkpoints. Used for reloading and evaluation.
-│
-├── notebooks/
-│   └── Jupyter notebooks for EDA, prototyping, and result visualization.
-│
-├── reports/
-│   └── Generated charts, logs, and markdown/PDF reports.
-│
-├── scripts/
-│   ├── init-optuna-db.sh       # Initializes the Optuna database inside the containerized PostgreSQL instance.
-│   └── Helper scripts for containerized environments and reproducible execution.
-│
-├── src/
-│   └── All core logic is encapsulated in the src module for modularity and ease of testing:
-│       ├── init.py              # Declares src as a Python package
-│       ├── constants.py             # Global constants (directories, column names, etc.)
-│       ├── data_preprocessing.py   # Functions for loading and cleaning raw datasets
-│       ├── evaluation.py           # Evaluation metrics and model performance summaries
-│       ├── feature_engineering.py  # Transformations like lookbacks, scaling, or encodings
-│       ├── loss.py                 # Contains MDN loss.
-│       ├── model_training.py       # Contains training logic.
-│       ├── models.py               # Model class definitions (LSTM, GRU, TCN, etc.)
-│       ├── run_pipeline.py         # Entrypoint script to execute full training pipeline
-│       ├── torch_datasets.py       # Dataset loader converting Pandas to Torch datasets
-│       ├── trainer.py              # Training loop, validation logic, and checkpointing
-│       └── visualizers.py          # Visualization utilities for predictions and losses
-│
-├── .gitignore
-├── pre-commit-config.yaml         # Ensures code quality and consistency. See Pre-Commit Configuration section.
-└── pyproject.toml                 # Declares project metadata, dependencies, and build system.
+*Expected Behavior: Pipeline should raise "Data drift detected in test set! Model retraining required." when running with drifted data*
+
+### Test Airflow Pipeline
 ```
-
-## Pre-Commit Configuration
-This project uses [**pre-commit**](https://pre-commit.com/) to ensure consistent formatting and prevent common mistakes before code is committed.
-
-###
-
-| Hook ID                    | Description                                                                                          |
-|----------------------------|------------------------------------------------------------------------------------------------------|
-| `black`                    | Formats Python code using [Black](https://github.com/psf/black), a strict code formatter. Ensures consistent style across `.py` files. |
-| `trailing-whitespace`      | Removes trailing whitespace from all files to keep diffs clean.                                     |
-| `end-of-file-fixer`        | Ensures that files end with a single newline character.                                              |
-| `check-yaml`               | Validates YAML syntax for files like GitHub Actions, config files, etc.                             |
-| `nbstripout`               | Strips output and metadata from Jupyter notebooks to avoid committing large diffs.                  |
-| `check-added-large-files`  | Blocks accidentally committed large files (over 5MB) to avoid bloating the repository.               |
-| `check-toml`               | Validates that `pyproject.toml` and other TOML files are properly formatted and parseable.           |
-| `yamllint`                 | Lints YAML files for structure and style. See below for configuration.                              |
-
-
-> **Note:** The `hadolint` hook was removed due to incompatibility with macOS-based development environments.
-
-Run all hooks on all files manually using `pre-commit run --all-files`
-
-## 🧠 Reflection (For HW 2)
-
-Throughout the development of this containerized ML pipeline and Airflow orchestration setup, several challenges emerged—particularly around compatibility and platform limitations. One notable issue involved the `pre-commit` hook setup: while `hadolint` is a useful tool for linting Dockerfiles, it was not functioning properly on macOS due to issues with the executable, leading to its removal from the configuration. Additionally, running Docker with GPU support proved difficult. macOS does not support GPU passthrough in Docker, which made it impossible to enable Metal (MPS) acceleration in containers. To work around this, I experimented with deploying the setup on an AWS EC2 instance equipped with a GPU. However, the added complexity of configuring networking, updating `docker-compose.yml` to support GPU runtime, and rewriting the `airflow.Dockerfile` to use NVIDIA’s CUDA base image with a multi-stage build introduced significant overhead—too much for a learning-focused environment. I consider this a potential area for future improvement, perhaps integrating GPU acceleration for large-scale training tasks.
-
-Another practical issue encountered was port conflicts—Airflow's webserver runs on port 8080, which is commonly used by other local services. I had to manually ensure that port mappings did not interfere with existing applications. Environment variable configuration was also a source of initial confusion. Some variables I used were outdated or renamed in newer versions of Airflow (3.3.0), which caused certain components to fail silently. This taught me the importance of verifying environment variable names directly from the official documentation rather than relying on outdated references. In fact, one broader takeaway is that while ChatGPT is helpful for scaffolding and quick references, it sometimes provides instructions that are inconsistent with the latest Airflow release. As such, cross-checking with the official docs remains essential for accurate and up-to-date setup instructions.
-
-
-Amazon linux:
-```
-docker compose -f deploy/docker/docker-compose.yml up --build  
-```
-```
-docker-compose -f deploy/docker/docker-compose.yml down
-```
-
-### docker amazonl inux with nvidia installed
-sudo yum update -y
-
-sudo chmod -R a+rw .
-
-
 AIRFLOW_HOME=/home/ec2-user/aqi_probability_prediction/deploy/airflow PYTHONPATH="${PYTHONPATH}:$(pwd)" airflow dags test ml_pipeline_dag 2025-08-02 --conf '{"dry_run": true}'
+```
+Note: ensure that you are running the command in the project root directory.
+
+### Verify MLflow Tracking
+Access the MLflow tracking UI at `http://localhost:5000` to verify that experiments.
+
+### Access the Drift Report
+The drift detection report is saved as a JSON file at `reports/drift_report.json`.
+
+## Reflection
+The biggest challenge I faced was enabling GPU support in the Dockerized environment. My previous assignment used a standard Airflow image without CUDA capabilities, making model training painfully slow. I spent considerable time migrating to a CUDA-enabled image, completely reconstructing the Docker environment and debugging dependency conflicts. Additionally, most assignment instructions were designed for conventional ML workflows and didn't apply to my time series forecasting approach with mixture density networks. Rather than forcing generic patterns, I adapted the core objectives to fit my existing architecture. The most technically challenging aspect was refactoring my custom trainer class for MLflow compatibility, requiring significant architectural changes to separate logging concerns from training logic.
+
+Despite these challenges, I developed custom solutions including time series-specific drift detection, parallel model training with centralized MLflow tracking, and intelligent Airflow branching that automatically responds to detected drift. This experience taught me that establishing robust infrastructure early prevents rework, modular design facilitates integration of new requirements, and specialized use cases often require thoughtful adaptation of standard MLOps patterns. The final system seamlessly integrates drift detection and MLflow tracking, providing automated quality monitoring essential for production deployment.
