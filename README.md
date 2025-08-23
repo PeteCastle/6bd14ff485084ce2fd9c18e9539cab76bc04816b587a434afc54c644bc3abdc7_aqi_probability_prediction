@@ -100,12 +100,12 @@ Modify parameters if you want to specify the number of trials, epochs, or in dry
 To test the pipeline, you can trigger the `prepare_data` task directly from the Airflow UI or use the command line:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
-  airflow dags trigger ml_pipeline_dag
+  airflow dags test ml_pipeline_dag
 ```
 You may also se the `--conf` flag to pass in parameters:
 ```bash
 docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
-  airflow dags trigger ml_pipeline_dag \
+  airflow dags test ml_pipeline_dag \
   --conf '{"dry_run": true}'
 ```
 You may also test the `prepare_data` task directly using the command line:
@@ -435,3 +435,6 @@ docker-compose -f deploy/docker/docker-compose.yml down
 sudo yum update -y
 
 sudo chmod -R a+rw .
+
+
+AIRFLOW_HOME=/home/ec2-user/aqi_probability_prediction/deploy/airflow PYTHONPATH="${PYTHONPATH}:$(pwd)" airflow dags test ml_pipeline_dag 2025-08-02 --conf '{"dry_run": true}'

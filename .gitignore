@@ -231,3 +231,4 @@ airflow.cfg
 mlflow/
 !mlflow/artifacts/.gitkeep
 !mlflow/mlruns/.gitkeep
+mlruns/*

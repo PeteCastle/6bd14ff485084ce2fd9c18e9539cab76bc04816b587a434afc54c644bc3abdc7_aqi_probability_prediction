@@ -6,6 +6,7 @@ from tqdm import tqdm
 from src.constants import CITY_NAMES, DATASET_DIR
 
 
+
 def get_raw_data() -> pd.DataFrame:
     dfs = []
     for file in (
@@ -39,4 +40,5 @@ def get_preprocessed_data(df: pd.DataFrame = None) -> pd.DataFrame:
     ]
     df.sort_values(by=["city_name", "datetime"], inplace=True)
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True).dt.round("h")
+    
     return df

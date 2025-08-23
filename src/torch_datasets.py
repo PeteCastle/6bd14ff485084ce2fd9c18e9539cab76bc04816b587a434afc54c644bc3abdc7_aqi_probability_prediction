@@ -132,7 +132,7 @@ class ConcatDatasetWithMetadata(ConcatDataset):
 
 
 def generate_datasets(
-    dataset_df: pd.DataFrame, lookback=96, delay=24, step=1
+    dataset_df: pd.DataFrame, lookback=96, delay=24, step=1, drift_strength: float = 0.0
 ) -> tuple[ConcatDatasetWithMetadata, ConcatDatasetWithMetadata]:
     training_datasets = []
     validation_datasets = []
@@ -150,6 +150,13 @@ def generate_datasets(
         group.drop(columns=["city_name"], inplace=True)
         training_df = group.iloc[:min_index].copy()
         validation_df = group.iloc[min_index:].copy()
+
+        # New: Apply drift if specified
+        if drift_strength > 0:
+            for col in POLLUTANT_COLUMNS:
+                shift = drift_strength * training_df[col].std()
+                validation_df[col] = validation_df[col] + shift
+                validation_df[col] = validation_df[col] * np.random.normal(1, drift_strength, size=len(validation_df))
 
         training_mean = training_df[POLLUTANT_COLUMNS].mean()
         training_std = training_df[POLLUTANT_COLUMNS].std()
