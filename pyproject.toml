@@ -28,7 +28,8 @@ dependencies = [
   "flask-appbuilder==4.8.0",
   "pyarrow==20.0.0",
   "mlflow==3.1.4",
-  "evidently==0.7.11"
+  "evidently==0.7.11",
+  "kagglehub==0.3.12"
 ]
 
 [project.optional-dependencies]
