@@ -33,9 +33,9 @@ ARG AIRFLOW_UID=50000
 RUN useradd -u ${AIRFLOW_UID} -g 0 -m -s /bin/bash airflow
 
 # ensure airflow can write to /opt/airflow/*
-RUN mkdir -p /opt/airflow/{dags,logs,plugins,data} \
- && chown -R ${AIRFLOW_UID}:0 /opt/airflow \
- && chmod -R g+rwXs /opt/airflow
+# RUN mkdir -p /opt/airflow/{dags,logs,plugins,data} \
+#  && chown -R ${AIRFLOW_UID}:0 /opt/airflow \
+#  && chmod -R g+rwXs /opt/airflow
 # optional: new files default to group-writable
 ENV UMASK=002
 

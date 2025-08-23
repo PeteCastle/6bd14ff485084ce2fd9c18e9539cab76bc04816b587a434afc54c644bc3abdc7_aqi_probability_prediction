@@ -13,6 +13,7 @@ x-airflow-common:
     - ${PWD}/src:/opt/airflow/src
     - ${PWD}/reports:/opt/airflow/reports
     - ${PWD}/config/airflow.cfg:/opt/airflow/airflow.cfg
+    - ${PWD}/data:/opt/airflow/data
     - ${PWD}/mlflow:/mlflow
     
     
@@ -111,7 +112,7 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: airflow celery worker
+    command: airflow celery worker --concurrency=5
     hostname: airflow-worker
     environment:
       CELERY_BROKER_URL: redis://redis:6379/0

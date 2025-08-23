@@ -4,6 +4,7 @@ import warnings
 import json
 import hashlib
 import typing
+import requests
 
 import numpy as np
 import pandas as pd
@@ -15,15 +16,19 @@ import optuna
 from tqdm import tqdm
 
 import mlflow
+import mlflow.pyfunc
+import mlflow.tracking
+import requests
 
 from src.constants import MODELS_DIR
 from src.loss import mdn_loss
 from src.torch_datasets import generate_datasets
+from src.utils import setup_mlflow_tracking
 from .models import GRU_MDN, LSTM_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
 
-mlflow.set_tracking_uri("http://mlflow:5000")
+setup_mlflow_tracking()
 
-class Trainer:
+class Trainer(mlflow.pyfunc.PythonModel):
     MLFLOW_EXPERIMENT = "aqi_mdn_experiment"
 
     def __init__(
@@ -37,29 +42,7 @@ class Trainer:
         batch_size: int = 256,
         params :dict = None, 
     ):
-        """
-        Initializes the training pipeline for a PyTorch model, including device configuration,
-        data loading, and model checkpoint handling.
-
-        Args:
-            model (torch.nn.Module): The PyTorch model to be trained.
-            criterion: The loss function used for training (e.g., nn.MSELoss, custom NLL).
-            optimizer: The optimization algorithm (e.g., torch.optim.Adam).
-            train_dataset (Dataset): The dataset used for training.
-            val_dataset (Dataset, optional): The dataset used for validation. Defaults to None.
-            batch_size (int, optional): Batch size used for training and validation loaders. Defaults to 256.
-            params (dict, optional): Additional parameters for logging. Defaults to None.
-
-        Attributes:
-            device (torch.device): The device on which the model will be trained (MPS, CUDA, or CPU).
-            model (torch.nn.Module): The model moved to the selected device.
-            train_loader (DataLoader): DataLoader for the training dataset.
-            val_loader (DataLoader or None): DataLoader for the validation dataset if provided.
-            history (dict): Dictionary to store training history including loss and timing.
-            start_epoch (int): The starting epoch index, updated if a checkpoint exists.
-            best_val_loss (float): The best validation loss achieved during training.
-            is_best_model (bool): Whether this model is the best for its class.
-        """
+    
 
         if torch.backends.mps.is_available():
             self.device = torch.device("mps")
@@ -100,6 +83,91 @@ class Trainer:
         """Returns True if the model was saved (i.e., it was the best for its class)."""
         return self.is_best_model
 
+    def load_context(self, context):
+        """
+        Load model context when the model is loaded for serving.
+        This method is called by MLflow when loading the model.
+        """
+        # If we have artifacts, load the model state
+        if hasattr(context, 'artifacts') and 'model_state' in context.artifacts:
+            model_state_path = context.artifacts['model_state']
+            self._load_model_from_artifacts(model_state_path)
+
+    def _load_model_from_artifacts(self, model_state_path):
+        """Load model state from artifacts when serving."""
+        try:
+            checkpoint = torch.load(model_state_path, map_location=self.device)
+            
+            # Get model class and hyperparams from checkpoint
+            model_class_name = checkpoint.get('model_class_name')
+            hyperparams = checkpoint.get('hyperparams', {})
+            
+            # Import the model class dynamically
+            model_classes = {
+                'LSTM_MDN': LSTM_MDN,
+                'GRU_MDN': GRU_MDN, 
+                'RNN_MDN': RNN_MDN,
+                'TCN_MDN': TCN_MDN,
+                'Transformer_MDN': Transformer_MDN
+            }
+            
+            if model_class_name in model_classes:
+                model_class = model_classes[model_class_name]
+                # Initialize the model with saved hyperparams
+                model_hyperparams = {k: v for k, v in hyperparams.items() 
+                                   if k not in ['learning_rate', 'lookback_days', 'step']}
+                self.model = model_class(input_dim=21, output_dim=7, **model_hyperparams).to(self.device)
+                self.model.load_state_dict(checkpoint['model_state_dict'])
+                self.model.eval()
+            else:
+                raise ValueError(f"Unknown model class: {model_class_name}")
+                
+        except Exception as e:
+            print(f"Warning: Could not load model from artifacts: {e}")
+            # Model will remain None, which will cause predict() to fail appropriately
+
+    def predict(self, context, model_input):
+        """
+        Generate predictions using the trained model.
+        
+        Args:
+            context: MLflow context (unused in this implementation)
+            model_input: Input data for prediction (pandas DataFrame or numpy array)
+            
+        Returns:
+            numpy array: Predictions from the model
+        """
+        if self.model is None:
+            raise ValueError("Model not loaded. Train the model first.")
+        
+        self.model.eval()
+        
+        # Convert input to tensor
+        if isinstance(model_input, pd.DataFrame):
+            input_tensor = torch.tensor(model_input.values, dtype=torch.float32)
+        elif isinstance(model_input, np.ndarray):
+            input_tensor = torch.tensor(model_input, dtype=torch.float32)
+        else:
+            input_tensor = model_input
+        
+        input_tensor = input_tensor.to(self.device)
+        
+        with torch.no_grad():
+            mu, sigma, alpha = self.model(input_tensor)
+            
+            # Calculate expected value (prediction)
+            batch_size = input_tensor.shape[0]
+            num_mixtures = self.model.num_mixtures
+            output_dim = mu.shape[1] // num_mixtures
+            
+            mu = mu.view(batch_size, num_mixtures, output_dim)
+            alpha = alpha.view(batch_size, num_mixtures)
+            
+            # Compute expected value: sum(alpha_i * mu_i)
+            predictions = torch.sum(mu * alpha.unsqueeze(-1), dim=1)
+            
+            return predictions.cpu().numpy()
+
     def _is_best_model_for_class(self, current_val_loss: float) -> bool:
         """
         Check if the current model is the best for its class by querying MLflow.
@@ -137,9 +205,67 @@ class Trainer:
             print(f"Warning: Could not query MLflow for best model comparison: {e}")
             return True
 
+    def _generate_run_name(self) -> str:
+        """
+        Generate a meaningful run name for MLflow based on model type and key hyperparameters.
+        
+        Returns:
+            str: A formatted run name containing model info and key hyperparameters
+        """
+        model_name = self.model.__class__.__name__
+        
+        # Extract key hyperparameters for the run name
+        key_params = []
+        
+        # Add hidden dimension if available
+        if 'hidden_dim' in self.params:
+            key_params.append(f"h{self.params['hidden_dim']}")
+        
+        # Add number of layers if available
+        if 'num_layers' in self.params:
+            key_params.append(f"l{self.params['num_layers']}")
+        
+        # Add number of mixtures if available
+        if 'num_mixtures' in self.params:
+            key_params.append(f"m{self.params['num_mixtures']}")
+        
+        # Add lookback days if available
+        if 'lookback_days' in self.params:
+            key_params.append(f"lb{self.params['lookback_days']}")
+        
+        # Add step if available
+        if 'step' in self.params:
+            key_params.append(f"s{self.params['step']}")
+        
+        # Add learning rate if available
+        if 'learning_rate' in self.params:
+            lr_str = f"{self.params['learning_rate']:.0e}".replace('e-0', 'e-').replace('e+0', 'e+')
+            key_params.append(f"lr{lr_str}")
+        
+        # Add dropout if available and not zero
+        if 'dropout' in self.params and self.params['dropout'] > 0:
+            key_params.append(f"dr{self.params['dropout']:.2f}")
+        
+        # Add number of heads for transformer models
+        if 'num_heads' in self.params:
+            key_params.append(f"heads{self.params['num_heads']}")
+        
+        # Combine model name with parameters
+        if key_params:
+            param_str = "_".join(key_params)
+            run_name = f"{model_name}_{param_str}"
+        else:
+            run_name = f"{model_name}_{self.name}"
+        
+        return run_name
+
     def train(self, num_epochs=30, save=True):
-        with mlflow.start_run() as run:
-            mlflow.set_experiment(self.MLFLOW_EXPERIMENT)
+        # Create a meaningful run name
+        run_name = self._generate_run_name()
+        experiment = mlflow.set_experiment(self.MLFLOW_EXPERIMENT)
+        
+        with mlflow.start_run(run_name=run_name, experiment_id=experiment.experiment_id) as run:
+            
             mlflow.log_param("model_name", self.model.__class__.__name__)
             mlflow.log_param("name", self.name)
             mlflow.log_params(self.params)
@@ -331,9 +457,23 @@ class Trainer:
         for metric_name, values in self.history.items():
             for step, value in enumerate(values):
                 mlflow.log_metric(metric_name, value, step=step)
-        mlflow.pytorch.log_model(
-            self.model,
-            name=self.name,
+        
+        # Create models directory if it doesn't exist
+        os.makedirs("models", exist_ok=True)
+        
+        # Save model state as artifact for reloading
+        model_state_path = f"models/{self.name}_state.pth"
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'hyperparams': self.params,
+            'model_class_name': self.model.__class__.__name__
+        }, model_state_path)
+        
+        # Log the Trainer itself as a PyFunc model
+        mlflow.pyfunc.log_model(
+            artifact_path=self.name,
+            python_model=self,
+            artifacts={'model_state': model_state_path},
             registered_model_name=self.model.__class__.__name__,
         )
 
@@ -383,6 +523,147 @@ class Trainer:
             params=_hyperparams,
         )
 
+    @classmethod
+    def from_best_mlflow_run(
+        cls,
+        df: pd.DataFrame,
+        model_class: torch.nn.Module,
+        experiment_name: str = None,
+    ):
+        """
+        Create a Trainer instance from the best MLflow run (lowest validation loss) for a given model class.
+        
+        Args:
+            df (pd.DataFrame): The dataset to use for training/validation
+            model_class (torch.nn.Module): The model class to find the best run for (e.g., LSTM_MDN, GRU_MDN)
+            experiment_name (str, optional): The MLflow experiment name. Defaults to the class experiment.
+            
+        Returns:
+            Trainer: A new Trainer instance configured with the best run's parameters and loaded history
+            
+        Raises:
+            ValueError: If no runs found for the specified model class
+        """
+        experiment_name = experiment_name or cls.MLFLOW_EXPERIMENT
+        
+        # Get the experiment
+        experiment = mlflow.get_experiment_by_name(experiment_name)
+        if experiment is None:
+            raise ValueError(f"Experiment '{experiment_name}' not found in MLflow.")
+        
+        # Search for runs with the specified model class, ordered by validation loss
+        runs = mlflow.search_runs(
+            experiment_ids=[experiment.experiment_id],
+            filter_string=f"params.model_name = '{model_class.__name__}'",
+            order_by=["metrics.final_val_loss ASC"],
+            max_results=1
+        )
+        
+        if len(runs) == 0:
+            raise ValueError(f"No MLflow runs found for model class '{model_class.__name__}' with validation loss in experiment '{experiment_name}'.")
+        
+        best_run = runs.iloc[0]
+        run_id = best_run['run_id']
+        run_name = best_run.get('tags.mlflow.runName', 'Unknown')
+        # print("BEST RUN")
+        # print(best_run)
+        val_loss = best_run['metrics.final_val_loss']
+        
+        print(f"Found best {model_class.__name__} run: {run_name} (val_loss: {val_loss:.6f})")
+        
+        # Extract hyperparameters from the run
+        hyperparams = {}
+        param_columns = [col for col in best_run.index if col.startswith('params.')]
+        for col in param_columns:
+            param_name = col.replace('params.', '')
+            param_value = best_run[col]
+            
+            # Skip non-hyperparameter params
+            if param_name in ['model_name', 'name', 'trial_number', 'trial_value', 'trial_state', 'study_name']:
+                continue
+                
+            # Convert string values back to appropriate types
+            if param_value is not None:
+                try:
+                    # Try to evaluate as Python literal (handles int, float, list, etc.)
+                    hyperparams[param_name] = eval(param_value) if isinstance(param_value, str) else param_value
+                except:
+                    # If evaluation fails, keep as string
+                    hyperparams[param_name] = param_value
+        
+        # Create a synthetic ID from the run_id for naming
+        synthetic_id = run_id[:8]  # Use first 8 chars of run_id
+        
+        # Use the existing from_template method to create the trainer
+        trainer = cls.from_template(
+            dataset_df=df,
+            model_class=model_class,
+            hyperparams=hyperparams,
+            _id=synthetic_id,
+        )
+        
+        # Add MLflow run information for better tracking
+        trainer.params['source_run_id'] = run_id
+        trainer.params['source_run_name'] = run_name
+        trainer.params['source_val_loss'] = val_loss
+        trainer.params['loaded_from_mlflow'] = True
+        
+        # Load training history from MLflow using the specific run
+        trainer._load_history_from_mlflow_run(run_id)
+        
+        return trainer
+
+    def _load_history_from_mlflow_run(self, run_id: str):
+        """
+        Load training history from a specific MLflow run ID.
+        
+        Args:
+            run_id (str): The MLflow run ID to load history from
+        """
+        try:
+            # Get all metrics for this run
+            client = mlflow.tracking.MlflowClient()
+            
+            # Try to get metric history (step-by-step training metrics)
+            try:
+                train_metrics = client.get_metric_history(run_id, "train_loss")
+                val_metrics = client.get_metric_history(run_id, "val_loss")
+                time_metrics = client.get_metric_history(run_id, "training_time")
+                
+                # Reconstruct history from metric history
+                self.history = {
+                    "train_loss": [m.value for m in train_metrics],
+                    "val_loss": [m.value for m in val_metrics],
+                    "training_time": [m.value for m in time_metrics]
+                }
+            except Exception:
+                # Fallback: use final metrics if step-by-step history is not available
+                self.history = {"train_loss": [], "val_loss": [], "training_time": []}
+            
+            # Get the run info for fallback metrics
+            run_info = client.get_run(run_id)
+            run_data = run_info.data
+            
+            # Fill in missing data with final metrics if available
+            if not self.history["train_loss"] and 'final_train_loss' in run_data.metrics:
+                final_train_loss = run_data.metrics['final_train_loss']
+                if final_train_loss is not None:
+                    self.history["train_loss"] = [final_train_loss]
+            
+            if not self.history["val_loss"] and 'final_val_loss' in run_data.metrics:
+                final_val_loss = run_data.metrics['final_val_loss']
+                if final_val_loss is not None:
+                    self.history["val_loss"] = [final_val_loss]
+                    
+            print(f"✅ Loaded training history from MLflow run: {run_id}")
+            print(f"   Train loss: {self.history['train_loss'][-1] if self.history['train_loss'] else 'N/A':.6f}")
+            print(f"   Val loss: {self.history['val_loss'][-1] if self.history['val_loss'] else 'N/A':.6f}")
+            
+        except Exception as e:
+            print(f"Warning: Could not load training history from MLflow run {run_id}: {e}")
+            # Keep default empty history
+            self.history = {"train_loss": [], "val_loss": [], "training_time": []}
+            
 def lstm_mdn_objective(trial, dataset_df: pd.DataFrame, num_epochs: int = 30):
     
     try:
@@ -514,6 +795,7 @@ def transformer_mdn_objective(trial, dataset_df: pd.DataFrame, num_epochs: int =
 def run_training(
     dataset_df: pd.DataFrame, num_trials: int = 30, num_epochs: int = 30
 ) -> typing.Dict[str, optuna.Study]:
+    print("Starting study for LSTM-MDN...")
     lstm_study = optuna.create_study(
         direction="minimize",
         study_name="lstm_mdn_hyperparam_search",
@@ -525,6 +807,7 @@ def run_training(
         n_trials=num_trials,
     )
 
+    print("Starting study for GRU-MDN...")
     gru_study = optuna.create_study(
         direction="minimize",
         study_name="gru_mdn_hyperparam_search",
@@ -536,6 +819,7 @@ def run_training(
         n_trials=num_trials,
     )
 
+    print("Starting study for RNN-MDN...")
     rnn_study = optuna.create_study(
         direction="minimize",
         study_name="rnn_mdn_hyperparam_search",
@@ -547,6 +831,7 @@ def run_training(
         n_trials=num_trials,
     )
 
+    print("Starting study for TCN-MDN...")
     tcn_study = optuna.create_study(
         direction="minimize",
         study_name="tcn_mdn_hyperparam_search",
@@ -558,6 +843,7 @@ def run_training(
         n_trials=num_trials,
     )
 
+    print("Starting study for Transformer-MDN...")
     transformer_study = optuna.create_study(
         direction="minimize",
         study_name="transformer_mdn_hyperparam_search",
