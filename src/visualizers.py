@@ -12,7 +12,7 @@ from tqdm import tqdm
 from src.constants import OUTPUT_DIR, POLLUTANT_COLUMNS, TQDM_DISABLE
 
 if typing.TYPE_CHECKING:
-    from src.model_training import Trainer
+    from src.models.train import Trainer
 
 
 class MDNVisualizer:

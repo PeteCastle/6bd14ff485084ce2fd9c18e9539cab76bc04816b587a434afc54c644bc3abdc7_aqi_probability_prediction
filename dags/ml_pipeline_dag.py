@@ -2,9 +2,9 @@ from airflow import DAG
 from airflow.operators.python import PythonOperator, BranchPythonOperator
 from airflow.operators.empty import EmptyOperator
 from datetime import datetime
-from src.data_preprocessing import get_raw_data, get_preprocessed_data
-from src.feature_engineering import get_feature_engineered_data
-from src.model_training import (
+from src.features.data_preprocessing import get_raw_data, get_preprocessed_data
+from src.features.transform import get_feature_engineered_data
+from src.models.train import (
     lstm_mdn_objective,
     gru_mdn_objective,
     rnn_mdn_objective,
@@ -12,9 +12,9 @@ from src.model_training import (
     transformer_mdn_objective,
 )
 from airflow.sdk import Param
-from src.evaluation import run_evaluation
+from src.models.validate import run_evaluation
 from src.constants import MODELS_DIR, OUTPUT_DIR, DATASET_DIR
-from src.drift_detection import detect_drift
+from src.monitoring.generate_drift import detect_drift
 import mlflow
 import optuna
 import pandas as pd
@@ -48,7 +48,9 @@ def _optimize_model(objective_func, study_name, dataset_df, num_trials, num_epoc
 
 
 def train_model(model_name, objective_func, num_trials, num_epochs, **context):
-    dataset_df = context["ti"].xcom_pull(task_ids="feature_engineering", key="dataset_df")
+    dataset_df = context["ti"].xcom_pull(
+        task_ids="feature_engineering", key="dataset_df"
+    )
     _optimize_model(
         objective_func,
         f"{model_name}_mdn_hyperparam_search",
@@ -68,7 +70,9 @@ def evaluate_model(**context):
         )
         for name in study_names
     }
-    dataset_df = context["ti"].xcom_pull(task_ids="feature_engineering", key="dataset_df")
+    dataset_df = context["ti"].xcom_pull(
+        task_ids="feature_engineering", key="dataset_df"
+    )
 
     report_folder = "dry_runs/" if context["params"]["dry_run"] else ""
     report_folder += context["dag_run"].run_id
@@ -80,21 +84,27 @@ def evaluate_model(**context):
 
 def run_drift_detection():
     test_drift_results = detect_drift(
-        DATASET_DIR / "processed" / "val_dataset.parquet", 
-        DATASET_DIR / "processed" / "drifted_val_dataset.parquet", 
+        DATASET_DIR / "processed" / "val_dataset.parquet",
+        DATASET_DIR / "processed" / "drifted_val_dataset.parquet",
     )
 
-    
     mlflow.log_param("test_drift_detected", test_drift_results["drift_detected"])
-    mlflow.log_param("test_overall_drift_score", test_drift_results["overall_drift_score"])
-    
+    mlflow.log_param(
+        "test_overall_drift_score", test_drift_results["overall_drift_score"]
+    )
 
 
 def branch_on_drift():
     with open(OUTPUT_DIR / "drift_report.json") as f:
         results = json.load(f)
     if results.get("drift_detected"):
-        return ["retrain_lstm", "retrain_gru", "retrain_rnn", "retrain_tcn", "retrain_transformer"]
+        return [
+            "retrain_lstm",
+            "retrain_gru",
+            "retrain_rnn",
+            "retrain_tcn",
+            "retrain_transformer",
+        ]
     return "pipeline_complete"
 
 
@@ -252,8 +262,15 @@ with DAG(
     pipeline_complete = EmptyOperator(task_id="pipeline_complete")
 
     # Main pipeline flow
-    preprocess_data >> feature_engineering_task >> [train_lstm, train_gru, train_rnn, train_tcn, train_transformer] >> evaluate_results >> drift_detection >> branch
-    
+    (
+        preprocess_data
+        >> feature_engineering_task
+        >> [train_lstm, train_gru, train_rnn, train_tcn, train_transformer]
+        >> evaluate_results
+        >> drift_detection
+        >> branch
+    )
+
     # Branch outcomes
     branch >> [retrain_lstm, retrain_gru, retrain_rnn, retrain_tcn, retrain_transformer]
     branch >> pipeline_complete

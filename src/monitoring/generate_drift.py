@@ -5,6 +5,7 @@ from evidently.presets import DataDriftPreset
 from src.constants import OUTPUT_DIR
 import json
 
+
 def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, Any]:
     reference_df = pd.read_parquet(reference_data_path)
     current_df = pd.read_parquet(current_data_path)
@@ -16,7 +17,6 @@ def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, 
         reference_df = reference_df.drop(columns=target_cols_ref)
     if target_cols_curr:
         current_df = current_df.drop(columns=target_cols_curr)
-
 
     threshold = 0.2
     report = Report(metrics=[DataDriftPreset(drift_share=threshold)])
@@ -38,7 +38,9 @@ def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, 
     all_features = dict(sorted_features)
     selected_features = dict(sorted_features[:3])
 
-    overall_drift_score = sum(all_features.values()) / len(all_features) if all_features else 0
+    overall_drift_score = (
+        sum(all_features.values()) / len(all_features) if all_features else 0
+    )
 
     output = {
         "drift_detected": drift_detected,

@@ -27,7 +27,7 @@ COPY data /opt/airflow/data
 
 # USER airflow
 # COPY airflow/dags /opt/airflow/dags
-COPY deploy/airflow/plugins /opt/airflow/plugins
+COPY airflow/plugins /opt/airflow/plugins
 
 ARG AIRFLOW_UID=50000
 RUN useradd -u ${AIRFLOW_UID} -g 0 -m -s /bin/bash airflow

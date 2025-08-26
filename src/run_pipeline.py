@@ -1,18 +1,19 @@
 import argparse
 
 import mlflow
-from src.drift_detection import detect_drift
+from src.monitoring.generate_drift import detect_drift
 from src.utils import setup_mlflow_tracking
 
-from .data_preprocessing import get_preprocessed_data, get_raw_data
-from .evaluation import run_evaluation
-from .feature_engineering import get_feature_engineered_data
-from .model_training import run_training
+from .features.data_preprocessing import get_preprocessed_data, get_raw_data
+from .models.validate import run_evaluation
+from .features.transform import get_feature_engineered_data
+from .models.model_training import run_training
 from .constants import DATASET_DIR
 import os
 
 # Call the function for compliance only.  Duplicated code
 setup_mlflow_tracking()
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -62,12 +63,14 @@ def main():
 
     print("Running drift detection on test set...")
     test_drift_results = detect_drift(
-        DATASET_DIR / "processed" / "val_dataset.parquet", 
-        DATASET_DIR / "processed" / "drifted_val_dataset.parquet", 
+        DATASET_DIR / "processed" / "val_dataset.parquet",
+        DATASET_DIR / "processed" / "drifted_val_dataset.parquet",
     )
 
     mlflow.log_param("test_drift_detected", test_drift_results["drift_detected"])
-    mlflow.log_param("test_overall_drift_score", test_drift_results["overall_drift_score"])
+    mlflow.log_param(
+        "test_overall_drift_score", test_drift_results["overall_drift_score"]
+    )
 
     if test_drift_results["drift_detected"]:
         raise ValueError("Data drift detected in teset set! Model retraining required.")

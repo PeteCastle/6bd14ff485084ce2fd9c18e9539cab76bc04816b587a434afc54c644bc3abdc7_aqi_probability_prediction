@@ -1,0 +1,69 @@
+# AQI Probability Prediction - Optuna Hyperparameter Configuration
+
+# Optuna Configuration
+optuna:
+  sampler:
+    type: "TPESampler"
+    seed: 10
+
+# Model Hyperparameter Search Spaces for Optuna
+hyperparameters:
+  # Common hyperparameters for all models
+  common:
+    hidden_dim:
+      type: "categorical"
+      choices: [64, 128, 256]
+    num_mixtures:
+      type: "int"
+      low: 3
+      high: 8
+    learning_rate:
+      type: "float"
+      low: 1.0e-4
+      high: 1.0e-2
+      log: true
+    lookback_days:
+      type: "categorical"
+      choices: [1, 2, 4]
+    step:
+      type: "categorical"
+      choices: [1, 2, 3, 4, 6]  # hours between timesteps
+    dropout:
+      type: "float"
+      low: 0.0
+      high: 0.5
+
+  # Model-specific hyperparameters
+  models:
+    LSTM_MDN:
+      num_layers:
+        type: "int"
+        low: 1
+        high: 3
+
+    GRU_MDN:
+      num_layers:
+        type: "int"
+        low: 1
+        high: 3
+
+    RNN_MDN:
+      num_layers:
+        type: "int"
+        low: 1
+        high: 3
+
+    TCN_MDN:
+      num_layers:
+        type: "int"
+        low: 2
+        high: 5
+
+    Transformer_MDN:
+      num_layers:
+        type: "int"
+        low: 1
+        high: 4
+      num_heads:
+        type: "categorical"
+        choices: [2, 4, 8]

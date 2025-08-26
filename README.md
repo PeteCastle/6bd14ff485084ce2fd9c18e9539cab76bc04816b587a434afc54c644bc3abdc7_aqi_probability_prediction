@@ -70,19 +70,19 @@ git clone https://github.com/PeteCastle/6bd14ff485084ce2fd9c18e9539cab76bc04816b
 #### 4. Build the services
 Build all services defined in the Docker Compose file:
 ```bash
-docker compose -f deploy/docker/docker-compose.yml build
+docker compose -f docker/docker-compose.yml build
 ```
 
 #### 5. Start the Airflow services
 Start the Airflow webserver, scheduler, and other services in detached mode:
 ```bash
-docker compose -f deploy/docker/docker-compose.yml up -d
+docker compose -f docker/docker-compose.yml up -d
 ```
 
 Optional:
 Get the logs of the Airflow worker to monitor the pipeline execution:
 ```bash
-docker compose -f deploy/docker/docker-compose.yml logs -f airflow-worker
+docker compose -f docker/docker-compose.yml logs -f airflow-worker
 ```
 
 #### 6. Running the Pipeline
@@ -97,18 +97,18 @@ Modify parameters if you want to specify the number of trials, epochs, or in dry
 #### 7.  Test the Pipeline
 To test the pipeline, you can trigger the `prepare_data` task directly from the Airflow UI or use the command line:
 ```bash
-docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
+docker compose -f docker/docker-compose.yml exec airflow-webserver \
   airflow dags test ml_pipeline_dag
 ```
 You may also se the `--conf` flag to pass in parameters:
 ```bash
-docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver \
+docker compose -f docker/docker-compose.yml exec airflow-webserver \
   airflow dags test ml_pipeline_dag \
   --conf '{"dry_run": true}'
 ```
 You may also test the `prepare_data` task directly using the command line:
 ```
-docker compose -f deploy/docker/docker-compose.yml exec airflow-webserver airflow tasks test ml_pipeline_dag prepare_data 2025-07-31
+docker compose -f docker/docker-compose.yml exec airflow-webserver airflow tasks test ml_pipeline_dag prepare_data 2025-07-31
 ```
 
 ### Method 2: Docker Setup
@@ -135,7 +135,7 @@ git clone https://github.com/PeteCastle/6bd14ff485084ce2fd9c18e9539cab76bc04816b
 #### 3. Build the Docker Image
 Use the following command to build the Docker image from the provided pipeline.Dockerfile. Run this in the project root directory:
 ```bash
-docker build -f deploy/docker/pipeline.Dockerfile \
+docker build -f docker/pipeline.Dockerfile \
   -t 6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7-ml-pipeline:latest \
   --build-arg BACKEND=cpu \
   .
@@ -302,11 +302,11 @@ The following table shows the new files and modifications added to support drift
 
 | File/Directory | Type | Description |
 |----------------|------|-------------|
-| `deploy/airflow/dags/ml_pipeline_dag.py` | Modified | Enhanced DAG with drift detection task, conditional branching logic, and automated retraining when drift is detected. Separated data preparation into two distinct tasks: preprocessing and feature engineering. |
-| `deploy/docker/Dockerfile.mlflow` | New | Dockerfile for MLflow service deployment to support experiment tracking and model registry functionality. |
-| `deploy/docker/airflow.Dockerfile` | Modified | Updated to use CUDA base image instead of standard Airflow image to enable GPU support for model training. Previous version renamed to `airflow.old.Dockerfile`. |
-| `deploy/docker/airflow.old.Dockerfile` | Renamed | Original Airflow Dockerfile preserved for reference. |
-| `deploy/docker/docker-compose.yml` | Modified | Added MLflow service configuration and improved startup behavior with proper service dependencies to ensure correct initialization order. |
+| `airflow/dags/ml_pipeline_dag.py` | Modified | Enhanced DAG with drift detection task, conditional branching logic, and automated retraining when drift is detected. Separated data preparation into two distinct tasks: preprocessing and feature engineering. |
+| `docker/Dockerfile.mlflow` | New | Dockerfile for MLflow service deployment to support experiment tracking and model registry functionality. |
+| `docker/airflow.Dockerfile` | Modified | Updated to use CUDA base image instead of standard Airflow image to enable GPU support for model training. Previous version renamed to `airflow.old.Dockerfile`. |
+| `docker/airflow.old.Dockerfile` | Renamed | Original Airflow Dockerfile preserved for reference. |
+| `docker/docker-compose.yml` | Modified | Added MLflow service configuration and improved startup behavior with proper service dependencies to ensure correct initialization order. |
 | `notebooks/00_download_data.ipynb` | New | Jupyter notebook for downloading data from Kaggle with interactive data exploration capabilities. |
 | `notebooks/03_drift_detection.ipynb` | New | Interactive notebook demonstrating drift detection analysis, visualization, and experimentation with different drift scenarios. |
 | `pyproject.toml` | Modified | Added new dependencies for drift detection (Evidently), MLflow integration, and enhanced data processing capabilities. |
@@ -327,7 +327,7 @@ python -m src.run_pipeline --dry-run --generate-report
 
 ### Test Airflow Pipeline
 ```
-AIRFLOW_HOME=/home/ec2-user/aqi_probability_prediction/deploy/airflow PYTHONPATH="${PYTHONPATH}:$(pwd)" airflow dags test ml_pipeline_dag 2025-08-02 --conf '{"dry_run": true}'
+AIRFLOW_HOME=/home/ec2-user/aqi_probability_prediction/airflow PYTHONPATH="${PYTHONPATH}:$(pwd)" airflow dags test ml_pipeline_dag 2025-08-02 --conf '{"dry_run": true}'
 ```
 Note: ensure that you are running the command in the project root directory.
 

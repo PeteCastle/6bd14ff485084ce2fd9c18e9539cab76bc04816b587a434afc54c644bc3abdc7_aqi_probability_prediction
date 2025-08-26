@@ -3,13 +3,13 @@ x-airflow-common:
   &airflow-common
   build:
     context: ${PWD}          # project root
-    dockerfile: deploy/docker/airflow.Dockerfile
+    dockerfile: docker/airflow.Dockerfile
   env_file: ${PWD}/config/.env
   volumes:
-    - ${PWD}/deploy/airflow/logs:/opt/airflow/logs
+    - ${PWD}/airflow/logs:/opt/airflow/logs
     - ${PWD}/models:/opt/airflow/models
     - ${PWD}/cache:/opt/airflow/cache
-    - ${PWD}/deploy/airflow/dags:/opt/airflow/dags
+    - ${PWD}/airflow/dags:/opt/airflow/dags
     - ${PWD}/src:/opt/airflow/src
     - ${PWD}/reports:/opt/airflow/reports
     - ${PWD}/config/airflow.cfg:/opt/airflow/airflow.cfg
@@ -49,7 +49,7 @@ services:
   mlflow:
     build:
       context: ${PWD}
-      dockerfile: deploy/docker/Dockerfile.mlflow
+      dockerfile: docker/Dockerfile.mlflow
     ports:
       - "5000:5000"
     env_file: ${PWD}/config/.env

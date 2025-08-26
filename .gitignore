@@ -232,3 +232,7 @@ mlflow/
 !mlflow/artifacts/.gitkeep
 !mlflow/mlruns/.gitkeep
 mlruns/*
+
+data/*
+!data/processed/.gitkeep
+!data/raw/.gitkeep

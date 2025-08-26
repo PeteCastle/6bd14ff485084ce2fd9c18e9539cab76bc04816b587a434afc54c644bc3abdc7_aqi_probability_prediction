@@ -8,13 +8,14 @@ import json
 import mlflow
 
 from src.constants import OUTPUT_DIR, POLLUTANT_COLUMNS
-from src.model_training import GRU_MDN, LSTM_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
-from src.model_training import Trainer
+from src.models import GRU_MDN, LSTM_MDN, RNN_MDN, TCN_MDN, Transformer_MDN
+from src.models.train import Trainer
 from src.visualizers import (
     MDNVisualizer,
     compare_model_performance,
     save_model_performance,
 )
+
 
 def calculate_baseline(dataset_df: pd.DataFrame):
     nlls = []
@@ -128,26 +129,31 @@ def run_evaluation(
         "training_loss": float(best_row["Training Loss"]),
         "test_loss": float(best_row["Validation Loss"]),
     }
-    json.dump(evaluation_results, open(OUTPUT_DIR / "evaluation_results.json", "w"), indent=2)
+    json.dump(
+        evaluation_results, open(OUTPUT_DIR / "evaluation_results.json", "w"), indent=2
+    )
 
     # For compliance only,
     # Check if model meets performance threshold and register if it does
     val_loss_threshold = -3.0
     val_loss = best_row["Validation Loss"]
-    
+
     if val_loss < val_loss_threshold:
-        print(f"Model meets performance threshold (val_loss: {val_loss:.4f} < {val_loss_threshold})")
+        print(
+            f"Model meets performance threshold (val_loss: {val_loss:.4f} < {val_loss_threshold})"
+        )
         try:
             # Register the best model
             model_name = f"aqi_prediction_{best_row['Model'].lower().replace('-', '_')}"
             mlflow.register_model(
-                f"runs:/{mlflow.active_run().info.run_id}/model",
-                model_name
+                f"runs:/{mlflow.active_run().info.run_id}/model", model_name
             )
             print(f"Model registered successfully as '{model_name}'")
         except Exception as e:
             print(f"Failed to register model: {e}.  Error ignored.")
     else:
-        print(f"Model does not meet performance threshold (val_loss: {val_loss:.4f} >= {val_loss_threshold})")
+        print(
+            f"Model does not meet performance threshold (val_loss: {val_loss:.4f} >= {val_loss_threshold})"
+        )
 
     return best_trainer, best_results_df

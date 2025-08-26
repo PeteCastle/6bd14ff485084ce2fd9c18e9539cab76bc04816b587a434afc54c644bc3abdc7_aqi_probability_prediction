@@ -156,7 +156,9 @@ def generate_datasets(
             for col in POLLUTANT_COLUMNS:
                 shift = drift_strength * training_df[col].std()
                 validation_df[col] = validation_df[col] + shift
-                validation_df[col] = validation_df[col] * np.random.normal(1, drift_strength, size=len(validation_df))
+                validation_df[col] = validation_df[col] * np.random.normal(
+                    1, drift_strength, size=len(validation_df)
+                )
 
         training_mean = training_df[POLLUTANT_COLUMNS].mean()
         training_std = training_df[POLLUTANT_COLUMNS].std()
