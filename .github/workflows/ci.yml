@@ -23,20 +23,14 @@ jobs:
         run: pip install uv
 
       - name: Create venv with uv
-        run: |
-          uv venv
-          echo "source .venv/bin/activate" >> $GITHUB_ENV
+        run: uv venv
 
       - name: Install dependencies (CPU only)
-        run: |
-          source .venv/bin/activate
-          uv pip install '.[cpu]'
+        run: .venv/bin/uv pip install '.[cpu]'
 
       - name: Run pytest
         run: |
-          source .venv/bin/activate
-          mkdir -p test-results
-          pytest -q tests/ --junitxml=test-results/junit.xml
+          .venv/bin/pytest -q tests/ --junitxml=test-results/junit.xml
 
       - name: Upload test results
         if: always()
