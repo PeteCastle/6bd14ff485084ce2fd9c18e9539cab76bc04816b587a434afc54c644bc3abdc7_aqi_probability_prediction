@@ -303,7 +303,7 @@ The following table shows the new files and modifications added to support drift
 | File/Directory | Type | Description |
 |----------------|------|-------------|
 | `airflow/dags/ml_pipeline_dag.py` | Modified | Enhanced DAG with drift detection task, conditional branching logic, and automated retraining when drift is detected. Separated data preparation into two distinct tasks: preprocessing and feature engineering. |
-| `docker/Dockerfile.mlflow` | New | Dockerfile for MLflow service deployment to support experiment tracking and model registry functionality. |
+| `docker/mlflow.Dockerfile` | New | Dockerfile for MLflow service deployment to support experiment tracking and model registry functionality. |
 | `docker/airflow.Dockerfile` | Modified | Updated to use CUDA base image instead of standard Airflow image to enable GPU support for model training. Previous version renamed to `airflow.old.Dockerfile`. |
 | `docker/airflow.old.Dockerfile` | Renamed | Original Airflow Dockerfile preserved for reference. |
 | `docker/docker-compose.yml` | Modified | Added MLflow service configuration and improved startup behavior with proper service dependencies to ensure correct initialization order. |

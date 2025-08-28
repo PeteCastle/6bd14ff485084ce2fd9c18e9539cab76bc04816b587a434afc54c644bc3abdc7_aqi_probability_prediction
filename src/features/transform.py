@@ -76,7 +76,7 @@ def dataset_to_df(
     return pd.DataFrame(rows)
 
 
-def get_feature_engineered_data(df: pd.DataFrame) -> pd.DataFrame:
+def get_feature_engineered_data(df: pd.DataFrame = None) -> pd.DataFrame:
     """
     Apply comprehensive feature engineering transformations to create ML-ready dataset.
 
@@ -183,15 +183,15 @@ def get_feature_engineered_data(df: pd.DataFrame) -> pd.DataFrame:
     # - delay=24: Predict 1 day (24 hours) ahead, relevant for air quality planning
     # - step=1: Use every hour for maximum data utilization
     # - drift_strength=0: No artificial drift for baseline evaluation
-    if not os.path.exists(DATASET_DIR / "processed" / f"val_dataset.parquet"):
-        _, val_dataset = generate_datasets(
+    if not os.path.exists(DATASET_DIR / f"reference.parquet"):
+        train_dataset, _ = generate_datasets(
             dataset_df, lookback=96, delay=24, step=1, drift_strength=0
         )
-        val_dataset = dataset_to_df(val_dataset)
-        val_dataset.to_parquet(
-            DATASET_DIR / "processed" / f"val_dataset.parquet", index=False
+        train_dataset = dataset_to_df(train_dataset)
+        train_dataset.to_parquet(
+            DATASET_DIR / f"reference.parquet", index=False
         )
-        del val_dataset  # Free memory after saving
+        del train_dataset  # Free memory after saving
 
     # Step 6b: Drift-Affected Validation Dataset
     # Rationale: Generate validation set with simulated distributional drift
@@ -199,15 +199,15 @@ def get_feature_engineered_data(df: pd.DataFrame) -> pd.DataFrame:
     # - Tests model performance under changing environmental conditions
     # - Evaluates model stability and adaptation capabilities
     # - Critical for production deployment where data distribution may shift
-    if not os.path.exists(DATASET_DIR / "processed" / f"drifted_val_dataset.parquet"):
-        _, drifted_val_dataset = generate_datasets(
+    if not os.path.exists(DATASET_DIR / f"current.parquet"):
+        drifted_train_dataset, _ = generate_datasets(
             dataset_df, lookback=96, delay=24, step=1, drift_strength=0.1
         )
 
-        drifted_val_dataset = dataset_to_df(drifted_val_dataset)
-        drifted_val_dataset.to_parquet(
-            DATASET_DIR / "processed" / f"drifted_val_dataset.parquet", index=False
+        drifted_train_dataset = dataset_to_df(drifted_train_dataset)
+        drifted_train_dataset.to_parquet(
+            DATASET_DIR / f"current.parquet", index=False
         )
-        del drifted_val_dataset  # Free memory after saving
+        del drifted_train_dataset  # Free memory after saving
 
     return dataset_df

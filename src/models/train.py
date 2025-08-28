@@ -9,6 +9,7 @@ import yaml
 
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 
 import torch
 from torch.utils.data import DataLoader
@@ -21,6 +22,7 @@ import mlflow
 import mlflow.pyfunc
 import mlflow.tracking
 import requests
+import shap
 
 from src.constants import MODELS_DIR
 from src.models.loss import mdn_loss
@@ -201,6 +203,44 @@ class Trainer(mlflow.pyfunc.PythonModel):
             alpha = alpha.view(batch_size, num_mixtures)
 
             # Compute expected value: sum(alpha_i * mu_i)
+            predictions = torch.sum(mu * alpha.unsqueeze(-1), dim=1)
+
+            return predictions.cpu().numpy()
+
+    def predict(self, model_input):
+        """
+        Generate predictions directly using the trained model (without MLflow context).
+
+        Args:
+            model_input (pd.DataFrame or np.ndarray or torch.Tensor): Input data for prediction.
+
+        Returns:
+            np.ndarray: Predictions from the model.
+        """
+        if self.model is None:
+            raise ValueError("Model not loaded or trained.")
+
+        self.model.eval()
+
+        if isinstance(model_input, pd.DataFrame):
+            input_tensor = torch.tensor(model_input.values, dtype=torch.float32)
+        elif isinstance(model_input, np.ndarray):
+            input_tensor = torch.tensor(model_input, dtype=torch.float32)
+        else:
+            input_tensor = model_input
+
+        input_tensor = input_tensor.to(self.device)
+
+        with torch.no_grad():
+            mu, sigma, alpha = self.model(input_tensor)
+
+            batch_size = input_tensor.shape[0]
+            num_mixtures = self.model.num_mixtures
+            output_dim = mu.shape[1] // num_mixtures
+
+            mu = mu.view(batch_size, num_mixtures, output_dim)
+            alpha = alpha.view(batch_size, num_mixtures)
+
             predictions = torch.sum(mu * alpha.unsqueeze(-1), dim=1)
 
             return predictions.cpu().numpy()
@@ -521,7 +561,7 @@ class Trainer(mlflow.pyfunc.PythonModel):
 
         # Log the Trainer itself as a PyFunc model
         mlflow.pyfunc.log_model(
-            artifact_path=self.name,
+            artifact_path="model",
             python_model=self,
             artifacts={"model_state": model_state_path},
             registered_model_name=self.model.__class__.__name__,

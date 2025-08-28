@@ -1,30 +1,45 @@
 import pandas as pd
-from typing import Dict, Any
-from evidently import Report
-from evidently.presets import DataDriftPreset
+from typing import Dict, Any, Tuple
 from src.constants import OUTPUT_DIR
 import json
+from pathlib import Path
+import logging
+from src.utils import setup_mlflow_tracking
+from src.constants import DATASET_DIR, OUTPUT_DIR
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+setup_mlflow_tracking()
 
 def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, Any]:
-    reference_df = pd.read_parquet(reference_data_path)
-    current_df = pd.read_parquet(current_data_path)
+    from evidently import Report
+    from evidently.presets import DataDriftPreset
+    from evidently.metrics import ValueDrift
 
-    target_cols_ref = [col for col in reference_df.columns if "target" in col.lower()]
-    target_cols_curr = [col for col in current_df.columns if "target" in col.lower()]
+    reference_df = pd.read_parquet(DATASET_DIR /"reference.parquet")
+    current_df = pd.read_parquet(DATASET_DIR / "current.parquet")
 
-    if target_cols_ref:
-        reference_df = reference_df.drop(columns=target_cols_ref)
-    if target_cols_curr:
-        current_df = current_df.drop(columns=target_cols_curr)
+    assert set(reference_df.columns) == set(current_df.columns), "Reference and current datasets must have the same columns."
+
+    target_cols = [col for col in reference_df.columns if "target" in col.lower()]
+    feature_cols = [col for col in reference_df.columns if col not in target_cols]
+
+    target_cols = [col for col in reference_df.columns if "target" in col.lower()]
+    feature_cols = [col for col in reference_df.columns if col not in target_cols]
 
     threshold = 0.2
-    report = Report(metrics=[DataDriftPreset(drift_share=threshold)])
+
+    report = Report(metrics=[
+        DataDriftPreset(drift_share=threshold), # Data Drift
+        *[ValueDrift(column=col) for col in feature_cols] # Concept Draft
+    ])
 
     report_run = report.run(reference_data=reference_df, current_data=current_df)
+    html_file = str(OUTPUT_DIR / f"data_drift_report.html")
+    report_run.save_html(html_file)
 
     report_dict = report_run.dict()
-
     drift_detected = report_dict["metrics"][0]["value"]["share"] > threshold
 
     feature_drifts = {}
@@ -38,9 +53,7 @@ def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, 
     all_features = dict(sorted_features)
     selected_features = dict(sorted_features[:3])
 
-    overall_drift_score = (
-        sum(all_features.values()) / len(all_features) if all_features else 0
-    )
+    overall_drift_score = sum(all_features.values()) / len(all_features) if all_features else 0
 
     output = {
         "drift_detected": drift_detected,
@@ -48,7 +61,12 @@ def detect_drift(reference_data_path: str, current_data_path: str) -> Dict[str, 
         "overall_drift_score": overall_drift_score,
     }
 
-    with open(OUTPUT_DIR / "drift_report.json", "w") as f:
-        json.dump(output, f, indent=2)
+    json_file = OUTPUT_DIR / "drift_report.json"
 
-    return output
+    with open(json_file, "w") as f:
+        import json
+        json.dump(output, f, indent=4)
+
+    return html_file, json_file
+        
+

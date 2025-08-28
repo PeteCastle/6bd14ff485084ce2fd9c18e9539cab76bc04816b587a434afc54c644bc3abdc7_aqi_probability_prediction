@@ -149,7 +149,7 @@ class TCNBlock(nn.Module):
 
 
 class TCN_MDN(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_mixtures, output_dim, num_layers=4):
+    def __init__(self, input_dim, hidden_dim, num_mixtures, output_dim, num_layers=4, dropout=None):
         super().__init__()
         layers = []
         for i in range(num_layers):
