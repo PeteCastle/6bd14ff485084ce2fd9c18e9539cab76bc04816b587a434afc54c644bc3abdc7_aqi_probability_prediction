@@ -50,7 +50,7 @@ services:
 
   fastapi:
     build:
-      context: ${PWD} 
+      context: ${PWD}
       dockerfile: docker/fastapi.Dockerfile
     container_name: fastapi
     ports:
@@ -180,20 +180,20 @@ services:
       optuna-init:
         condition: service_completed_successfully
 
-  airflow-flower:
-    <<: *airflow-common
-    ports:
-      - "5556:5555"
-    command: airflow celery flower
-    container_name: airflow-flower
-    depends_on:
-      airflow-init:
-        condition: service_completed_successfully
-      optuna-init:
-        condition: service_completed_successfully
-    environment:
-      CELERY_BROKER_URL: redis://redis:6379/0
-      CELERY_RESULT_BACKEND: redis://redis:6379/1
+  # airflow-flower:
+  #   <<: *airflow-common
+  #   ports:
+  #     - "5556:5555"
+  #   command: airflow celery flower
+  #   container_name: airflow-flower
+  #   depends_on:
+  #     airflow-init:
+  #       condition: service_completed_successfully
+  #     optuna-init:
+  #       condition: service_completed_successfully
+  #   environment:
+  #     CELERY_BROKER_URL: redis://redis:6379/0
+  #     CELERY_RESULT_BACKEND: redis://redis:6379/1
 
 volumes:
   postgres-db-volume:

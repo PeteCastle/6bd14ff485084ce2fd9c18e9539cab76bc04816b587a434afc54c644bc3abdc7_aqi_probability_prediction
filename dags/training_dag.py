@@ -1,7 +1,6 @@
 from airflow import DAG
-from airflow.operators.python import PythonOperator, BranchPythonOperator
-from airflow.operators.empty import EmptyOperator
-from datetime import datetime
+from airflow.operators.python import PythonOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from src.features.data_preprocessing import get_raw_data, get_preprocessed_data
 from src.features.transform import get_feature_engineered_data
 from src.models.train import (
@@ -15,14 +14,9 @@ from src.models.train import (
 from src.data.ingest import ingest_data
 from airflow.sdk import Param
 from src.models.validate import run_evaluation
-from src.constants import MODELS_DIR, OUTPUT_DIR, DATASET_DIR
-from src.monitoring.generate_drift import detect_drift
-import mlflow
 import optuna
 from optuna.samplers import TPESampler
-import pandas as pd
 import os
-import json
 
 
 def prepare_data(**context):
@@ -157,7 +151,6 @@ with DAG(
     max_active_runs=1,
     render_template_as_native_obj=True,
 ) as dag:
-
     ingest_data_ = PythonOperator(
         task_id="ingest_data",
         python_callable=ingest_data,
@@ -243,6 +236,12 @@ with DAG(
         python_callable=evaluate_model,
     )
 
+    trigger_promote = TriggerDagRunOperator(
+        task_id="trigger_promote_dag",
+        trigger_dag_id="promote_model_dag",
+        wait_for_completion=False,  # set True if you want training_dag to block until promotion finishes
+    )
+
     (
         ingest_data_
         >> load_config_task
@@ -250,4 +249,5 @@ with DAG(
         >> feature_engineering_task
         >> [train_lstm, train_gru, train_rnn, train_tcn, train_transformer]
         >> evaluate_results
+        >> trigger_promote
     )

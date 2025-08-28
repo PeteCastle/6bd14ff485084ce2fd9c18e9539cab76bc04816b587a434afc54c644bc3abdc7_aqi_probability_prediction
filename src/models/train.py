@@ -1,10 +1,7 @@
 import os
 import time
 import warnings
-import json
-import hashlib
 import typing
-import requests
 import yaml
 
 import numpy as np
@@ -21,7 +18,6 @@ from tqdm import tqdm
 import mlflow
 import mlflow.pyfunc
 import mlflow.tracking
-import requests
 import shap
 
 from src.constants import MODELS_DIR
@@ -165,48 +161,6 @@ class Trainer(mlflow.pyfunc.PythonModel):
             print(f"Warning: Could not load model from artifacts: {e}")
             # Model will remain None, which will cause predict() to fail appropriately
 
-    def predict(self, context, model_input):
-        """
-        Generate predictions using the trained model.
-
-        Args:
-            context: MLflow context (unused in this implementation)
-            model_input: Input data for prediction (pandas DataFrame or numpy array)
-
-        Returns:
-            numpy array: Predictions from the model
-        """
-        if self.model is None:
-            raise ValueError("Model not loaded. Train the model first.")
-
-        self.model.eval()
-
-        # Convert input to tensor
-        if isinstance(model_input, pd.DataFrame):
-            input_tensor = torch.tensor(model_input.values, dtype=torch.float32)
-        elif isinstance(model_input, np.ndarray):
-            input_tensor = torch.tensor(model_input, dtype=torch.float32)
-        else:
-            input_tensor = model_input
-
-        input_tensor = input_tensor.to(self.device)
-
-        with torch.no_grad():
-            mu, sigma, alpha = self.model(input_tensor)
-
-            # Calculate expected value (prediction)
-            batch_size = input_tensor.shape[0]
-            num_mixtures = self.model.num_mixtures
-            output_dim = mu.shape[1] // num_mixtures
-
-            mu = mu.view(batch_size, num_mixtures, output_dim)
-            alpha = alpha.view(batch_size, num_mixtures)
-
-            # Compute expected value: sum(alpha_i * mu_i)
-            predictions = torch.sum(mu * alpha.unsqueeze(-1), dim=1)
-
-            return predictions.cpu().numpy()
-
     def predict(self, model_input):
         """
         Generate predictions directly using the trained model (without MLflow context).
@@ -345,8 +299,7 @@ class Trainer(mlflow.pyfunc.PythonModel):
 
         with mlflow.start_run(
             run_name=run_name, experiment_id=experiment.experiment_id
-        ) as run:
-
+        ):
             mlflow.log_param("model_name", self.model.__class__.__name__)
             mlflow.log_param("name", self.name)
             mlflow.log_params(self.params)
@@ -359,7 +312,7 @@ class Trainer(mlflow.pyfunc.PythonModel):
 
                     for inputs, targets in tqdm(
                         self.train_loader,
-                        desc=f"Epoch {epoch+1}",
+                        desc=f"Epoch {epoch + 1}",
                         unit="batch",
                         disable=True,
                     ):
@@ -407,11 +360,11 @@ class Trainer(mlflow.pyfunc.PythonModel):
                             self.best_val_loss = avg_val_loss
 
                         pbar.set_description(
-                            f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f} - Val Loss: {avg_val_loss:.6f}"
+                            f"Epoch {epoch + 1}/{num_epochs} - Train Loss: {avg_train_loss:.6f} - Val Loss: {avg_val_loss:.6f}"
                         )
                     else:
                         pbar.set_description(
-                            f"Epoch {epoch+1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}"
+                            f"Epoch {epoch + 1}/{num_epochs} - Train Loss: {avg_train_loss:.6f}"
                         )
 
                     self.history["training_time"].append(time.time() - start_time)
@@ -559,6 +512,10 @@ class Trainer(mlflow.pyfunc.PythonModel):
             model_state_path,
         )
 
+        # Add SHAP explainer if this is the best model
+        # if self.is_best_model and self.val_dataset is not None:
+        #     self._generate_shap_explainer()
+
         # Log the Trainer itself as a PyFunc model
         mlflow.pyfunc.log_model(
             artifact_path="model",
@@ -566,6 +523,174 @@ class Trainer(mlflow.pyfunc.PythonModel):
             artifacts={"model_state": model_state_path},
             registered_model_name=self.model.__class__.__name__,
         )
+
+    def _generate_shap_explainer(self):
+        """Generate SHAP explainer and feature importance plots for the best model."""
+        try:
+            print("🔍 Generating SHAP explainer for best model...")
+
+            # Get current MLflow run ID for unique file naming
+            run_id = mlflow.active_run().info.run_id
+            model_id = f"{self.model.__class__.__name__}_{run_id[:8]}"
+
+            # Get a sample of validation data for SHAP analysis
+            sample_size = min(100, len(self.val_dataset))  # Use up to 100 samples
+            indices = np.random.choice(
+                len(self.val_dataset), sample_size, replace=False
+            )
+
+            # Extract input features from validation dataset
+            background_data = []
+            test_data = []
+
+            for i in range(min(50, len(indices))):  # Background data
+                inputs, _ = self.val_dataset[indices[i]]
+                background_data.append(inputs.numpy())
+
+            for i in range(50, min(100, len(indices))):  # Test data
+                inputs, _ = self.val_dataset[indices[i]]
+                test_data.append(inputs.numpy())
+
+            if not test_data:  # If we don't have enough data, use background for test
+                test_data = background_data[:10]
+
+            background_data = np.array(background_data)
+            test_data = np.array(test_data)
+
+            # Create a wrapper function for SHAP that returns expected values
+            def model_predict(X):
+                """Wrapper function for SHAP that returns model predictions."""
+                self.model.eval()
+                with torch.no_grad():
+                    X_tensor = torch.tensor(X, dtype=torch.float32).to(self.device)
+                    mu, sigma, alpha = self.model(X_tensor)
+
+                    # Calculate expected value (prediction) for each output dimension
+                    batch_size = X_tensor.shape[0]
+                    num_mixtures = self.model.num_mixtures
+                    output_dim = mu.shape[1] // num_mixtures
+
+                    mu = mu.view(batch_size, num_mixtures, output_dim)
+                    alpha = alpha.view(batch_size, num_mixtures)
+
+                    # Compute expected value: sum(alpha_i * mu_i)
+                    predictions = torch.sum(mu * alpha.unsqueeze(-1), dim=1)
+
+                    return predictions.cpu().numpy()
+
+            # Create SHAP explainer
+            explainer = shap.DeepExplainer(model_predict, background_data)
+            shap_values = explainer.shap_values(test_data)
+
+            # If shap_values is a list (multi-output), we need to handle each output
+            if isinstance(shap_values, list):
+                # For multi-output, create plots for each output dimension
+                output_names = ["PM2.5", "PM10", "O3", "NO2", "SO2", "CO", "AQI"]
+
+                for output_idx, output_name in enumerate(output_names):
+                    if output_idx < len(shap_values):
+                        # Create feature importance plot for this output
+                        plt.figure(figsize=(12, 8))
+                        shap.summary_plot(
+                            shap_values[output_idx],
+                            test_data,
+                            show=False,
+                            feature_names=[
+                                f"feature_{i}" for i in range(test_data.shape[1])
+                            ],
+                        )
+                        plt.title(f"SHAP Feature Importance - {output_name}")
+                        plt.tight_layout()
+
+                        # Save plot with unique model ID
+                        plot_path = f"models/shap_plot_{model_id}_{output_name.lower().replace('.', '_')}.png"
+                        plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+                        plt.close()
+
+                        # Log as MLflow artifact
+                        mlflow.log_artifact(plot_path, "shap_plots")
+
+                        # Calculate and log feature importances
+                        feature_importance = np.abs(shap_values[output_idx]).mean(
+                            axis=0
+                        )
+                        importance_dict = {
+                            f"feature_{i}_importance_{output_name}": float(imp)
+                            for i, imp in enumerate(feature_importance)
+                        }
+                        mlflow.log_metrics(importance_dict)
+
+                # Create overall summary plot
+                plt.figure(figsize=(15, 10))
+                shap.summary_plot(
+                    shap_values[0],  # Use first output for overall summary
+                    test_data,
+                    show=False,
+                    feature_names=[f"feature_{i}" for i in range(test_data.shape[1])],
+                )
+                plt.title("SHAP Feature Importance - Overall Summary")
+                plt.tight_layout()
+
+            else:
+                # Single output case
+                plt.figure(figsize=(12, 8))
+                shap.summary_plot(
+                    shap_values,
+                    test_data,
+                    show=False,
+                    feature_names=[f"feature_{i}" for i in range(test_data.shape[1])],
+                )
+                plt.title("SHAP Feature Importance")
+                plt.tight_layout()
+
+                # Calculate and log feature importances
+                feature_importance = np.abs(shap_values).mean(axis=0)
+                importance_dict = {
+                    f"feature_{i}_importance": float(imp)
+                    for i, imp in enumerate(feature_importance)
+                }
+                mlflow.log_metrics(importance_dict)
+
+            # Save overall plot as shap_plot.png with unique model ID
+            plot_path = f"models/shap_plot_{model_id}.png"
+            plt.savefig(plot_path, dpi=300, bbox_inches="tight")
+            plt.close()
+
+            # Log the main plot as MLflow artifact
+            mlflow.log_artifact(plot_path, "shap_explainer")
+
+            # Save SHAP values as numpy arrays with unique model ID
+            shap_values_path = f"models/{model_id}_shap_values.npy"
+            test_data_path = f"models/{model_id}_test_data.npy"
+
+            if isinstance(shap_values, list):
+                # Save as a compressed archive for multi-output
+                np.savez_compressed(
+                    shap_values_path.replace(".npy", ".npz"), *shap_values
+                )
+            else:
+                np.save(shap_values_path, shap_values)
+
+            np.save(test_data_path, test_data)
+
+            # Log SHAP data as artifacts
+            mlflow.log_artifact(
+                (
+                    shap_values_path.replace(".npy", ".npz")
+                    if isinstance(shap_values, list)
+                    else shap_values_path
+                ),
+                "shap_explainer",
+            )
+            mlflow.log_artifact(test_data_path, "shap_explainer")
+
+            print("✅ SHAP explainer generated and logged successfully!")
+
+        except Exception as e:
+            print(f"⚠️ Failed to generate SHAP explainer: {str(e)}")
+            import traceback
+
+            traceback.print_exc()
 
     def _log_metrics_only(self, epoch=None):
         """Log metrics to MLflow without saving the model."""
@@ -692,7 +817,7 @@ class Trainer(mlflow.pyfunc.PythonModel):
                         if isinstance(param_value, str)
                         else param_value
                     )
-                except:
+                except Exception:
                     # If evaluation fails, keep as string
                     hyperparams[param_name] = param_value
 
