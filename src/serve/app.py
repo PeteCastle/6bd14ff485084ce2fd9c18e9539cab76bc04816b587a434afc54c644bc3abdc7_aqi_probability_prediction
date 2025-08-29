@@ -83,6 +83,8 @@ app = FastAPI(
 
 def _load_best_model():
     try:
+        setup_mlflow_tracking()
+
         client = MlflowClient()
         model_name = "champion"
         mv = client.get_latest_versions(model_name, stages=["Production"])

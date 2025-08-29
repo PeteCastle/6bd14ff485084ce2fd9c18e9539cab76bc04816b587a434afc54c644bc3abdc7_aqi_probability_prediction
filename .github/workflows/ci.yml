@@ -24,7 +24,7 @@ jobs:
 
       - name: Create venv with uv
         run: uv venv
-      
+
       - name: Activate venv
         run: source .venv/bin/activate
 
