@@ -213,3 +213,26 @@ models/*
 !models/.gitkeep
 
 cache/*
+cache/.gitkeep
+
+reports/*
+!reports/sample
+
+airflow/logs
+
+.DS_STORE
+
+airflow.cfg
+.env
+
+!airflow.cfg.sample
+!.env.sample
+
+mlflow/
+!mlflow/artifacts/.gitkeep
+!mlflow/mlruns/.gitkeep
+mlruns/*
+
+data/*
+!data/processed/.gitkeep
+!data/raw/.gitkeep

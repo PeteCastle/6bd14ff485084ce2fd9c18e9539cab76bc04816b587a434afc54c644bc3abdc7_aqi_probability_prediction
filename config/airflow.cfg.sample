@@ -1,0 +1,21 @@
+[core]
+executor = CeleryExecutor
+fernet_key =
+dags_are_paused_at_creation = True
+load_examples = False
+simple_auth_manager_all_admins = True
+default_timezone = utc
+
+[api]
+base_url = http://airflow-webserver:8080
+secret_key = mysecretkey
+
+[api_auth]
+jwt_secret = mysecretdasfa31dsfa
+
+[celery]
+broker_url = redis://redis:6379/0
+result_backend = redis://redis:6379/1
+
+[database]
+sql_alchemy_conn = postgresql+psycopg2://airflow:airflow@postgres/airflow

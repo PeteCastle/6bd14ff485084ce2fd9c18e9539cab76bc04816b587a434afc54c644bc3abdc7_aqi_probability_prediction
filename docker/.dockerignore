@@ -1,0 +1,13 @@
+models/*.pth
+cache/*.pkl
+cache/*.pt
+__pycache__/
+*.pyc
+.env
+.cache/
+.git/*
+data/*
+notebooks/*
+.vscode/
+.venv/
+buid/

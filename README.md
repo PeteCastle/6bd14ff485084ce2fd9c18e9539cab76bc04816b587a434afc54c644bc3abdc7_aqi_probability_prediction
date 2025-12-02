@@ -3,6 +3,8 @@
 This repository is a modified version of the [original Air Quality Index (AQI) Probability Prediction project](https://github.com/PeteCastle/aqi-mdn), tailored for an activity as part of the requirements for Machine Learning Operations (MLOps) course.  Intellectual property rights for the original project are retained by the original authors: Francis Mark Cayco, Andgrel Heber Jison, Angela Elaine Pelayo, and Eros Paul Estante.
 
 **Francis Mark Cayco**
+**Angela Elaine Pelayo**
+**Eros Paul Estante**
 
 Masters of Science in Data Science
 
@@ -32,136 +34,85 @@ Sources:
 - [2023 to 2024 Data (Kaggle)](https://www.kaggle.com/datasets/bwandowando/philippine-major-cities-air-quality-data)
 - [2025 Data (Kaggle)](https://www.kaggle.com/datasets/bwandowando/philippine-cities-air-quality-index-data-2025/data)
 
-Note: The data structure in Kaggle might've changed and updated since we last accessed it.
-
 ## Setup Instructions
+> Notes for Methods 1 and 2:
+> - CUDA GPU support in highly recommended for model training.
+> - Apple Silicon MPS will never be supported in this Dockerized setup.
 
-### 1. Create and activate a virtual environment using `uv`
-Ensure that UV is [installed in your computer](https://docs.astral.sh/uv/getting-started/installation/).
+This method runs the entire pipeline using **Apache Airflow** in a Dockerized environment. It is the recommended way to orchestrate scheduled training, evaluation, and report generation.
 
-**(For Linux/MacOS)**
+#### 1. Install Docker Compose
+
+Make sure you have the following installed:
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
+  (v2 preferred: `docker compose` instead of `docker-compose`)
+
+To verify installation:
+```bash
+docker --version
+docker compose version
+```
+
+#### 2. Clone the repository
+Clone the repository to your local machine:
+```bash
+git clone https://github.com/PeteCastle/6bd14ff485084ce2fd9c18e9539cab76bc04816b587a434afc54c644bc3abdc7_aqi_probability_prediction aqi-probability-prediction
+```
+
+#### 3. Setup the Airflow environment variables
+- Navigate to the project directory.
+- Inside the `config` directory, create an `.env` file using `config/.env.example` as a reference.
+- Inside the `config` directory, create an `airflow.cfg` file using `config/airflow.cfg.example` as a reference.
+- Inside the `config` directory, create a `config.yaml` file using `config/config.yaml.example` as a reference.
+
+#### 4. Build the services
+Build all services defined in the Docker Compose file:
+```bash
+docker compose -f docker/docker-compose.yml build
+```
+
+#### 5. Start the Airflow services
+Start the Airflow webserver, scheduler, and other services in detached mode:
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+#### 6. Running the Pipeline
+Access the Airflow web interface and DAGs at `http://localhost:8080/dags`.
+![Airflow DAGs](docs/assets/airflow_dags.png)
+Click on `training_dag` to view the DAG details.
+
+![Model Training Pipeline](docs/assets/training_dag.png)
+Click on `Trigger` to run the pipeline manually
+![Pipeline Trigger](docs/assets/pipeline_trigger.png)
+Modify parameters if you want to specify the number of trials, epochs, or in dry run.  The script will always generate a report after training and evaluation.
+
+#### Other Pipelines
+- `drift_dag`: Detects data drift using Evidently and generates a report.
+- `promote_model_dag`: Promotes the best model to production based on evaluation metrics.
+
+#### 7.  Test the Datasets
+To test the datasets, you should create an environment first.
 ```bash
 uv venv
 source .venv/bin/activate
+
+uv pip install -r pyproject.toml
 ```
 
-**(For Windows)**
+Run the following command on the root directory:
+
 ```bash
-uv venv
-source .venv/Scripts/activate.ps1
+pytest
 ```
 
-### 2. Install dependencies
-Use either of the following, depending on your system’s hardware:
-- For Apple Silicon / Metal backend: `uv pip install '.[metal]'`
-- For NVIDIA GPU / CUDA backend: `uv pip install '.[cuda]'`
-- CPU Only: `uv pip install '.[cpu]'`
+## Exposed Ports
+The following ports are exposed by the Docker Compose setup:
+- Postgres → 5432:5432
+- FastAPI → 8000:8000
+- MLflow → 5000:5000
+- Airflow Webserver → 8080:8080
+- (Optional / commented out) Airflow Flower → 5556:5555
 
-### 3. Run Pre-Commit Hooks  (optional but recommended)
-Install pre-commit hooks to ensure code quality and consistency:
-```bash
-pre-commit install
-```
-Run all pre-commit hooks on all files.
-```bash
-pre-commit run --all-files
-```
-
-This will apply formatting (e.g., Black), validate configs, strip Jupyter outputs, and check for large files.
-
-### 4. Run the Pipeline
-To execute the training and evaluation pipeline:
-```bash
-python -m src.run_pipeline
-```
-
-**Command-Line Arguments**
-
-| Argument              | Type      | Default | Description                                                                                     |
-|-----------------------|-----------|---------|-------------------------------------------------------------------------------------------------|
-| `--num_trials`        | `int`     | `30`    | Number of Optuna trials to run for each model.                                                  |
-| `--num_epochs`        | `int`     | `30`    | Number of training epochs per trial.                                                            |
-| `--dry-run`           | `flag`    | `False` | Runs a fast version of the pipeline with **1 trial** and **1 epoch** per model. Ignores other training args. |
-| `--generate-report`   | `flag`    | `False` | If set, generates a markdown report after training and evaluation.                             |
-
-**Examples:**
-
-To run the pipeline with 50 trials and 20 epochs, and generate a report:
-```bash
-python -m src.run_pipeline --num_trials 50 --num_epochs 20 --generate-report
-```
-
-To run a quick dry run with minimal settings, and generate a sample report:
-```bash
-python -m src.run_pipeline --dry-run --generate-report
-```
-
-## 🧠 Reflection
-
-One of the key challenges I encountered during this project was related to compatibility issues with some `pre-commit` hooks. A few hooks initially failed to run due to unknown errors, which disrupted the development workflow. After some debugging, I resolved the issue by updating the affected hooks to their latest versions, which restored compatibility and allowed the hooks to execute correctly across different environments. In contrast, the `uv` setup process was smooth, as we had already adopted it in other projects. Similarly, there were no major issues with data preprocessing since the core machine learning pipeline had already been implemented in a previous iteration of the project. However, I did face some issues when reworking the caching logic. The original logic was tightly coupled with the notebook-based workflow, and I had to redesign it to support a more modular and reusable pipeline structure. This required careful consideration to ensure cache hits/misses behaved correctly in a script-based MLOps setup.
-
-A key area for future improvement is enabling parallel training of the five deep learning models (LSTM-MDN, GRU-MDN, RNN-MDN, TCN-MDN, Transformer-MDN). Since we are using Optuna for hyperparameter optimization, we can leverage its distributed capabilities to train each model concurrently across multiple machines or processes.
-
-## Folder Structure
-This project follows a modular and reproducible structure tailored for machine learning workflows.
-```
-aqi-probability-prediction/
-│
-├── .vscode/
-│   └── Editor-specific settings for VSCode.
-│
-├── cache/
-│   └── Temporary files and intermediate artifacts such as checkpoints and cached datasets.
-│
-├── data/
-│   ├── raw/
-│   │   └── Original datasets as collected or received. Keeping them unmodified ensures full reproducibility.
-│   └── processed/
-│       └── Cleaned, transformed, and feature-engineered datasets ready for modeling. Separating these avoids accidental overwrites and aids in debugging.
-│
-├── models/
-│   └── Trained model artifacts, including weights and saved checkpoints. Used for reloading and evaluation without retraining.
-│
-├── notebooks/
-│   └── Jupyter notebooks for exploratory data analysis (EDA), prototyping, and result visualization.
-│
-├── reports/
-│   └── Generated charts, logs, and markdown/PDF reports.
-│
-├── src/
-│   └── All core logic is encapsulated in the `src` module for modularity and ease of testing:
-│       ├── __init__.py              # Declares src as a Python package
-│       ├── constants.py             # Global constants (directories, column names, etc.)
-│       ├── data_preprocessing.py   # Functions for loading and cleaning raw datasets
-│       ├── evaluation.py           # Evaluation metrics and model performance summaries
-│       ├── feature_engineering.py  # Transformations like lookbacks, scaling, or encodings
-│       ├── loss.py                 # Contains MDN loss.
-│       ├── model_training.py       # Contains training logic.
-│       ├── models.py               # Model class definitions (LSTM, GRU, TCN, etc.)
-│       ├── run_pipeline.py         # Entrypoint script to execute full training pipeline
-│       ├── torch_datasets.py       # Dataset loading Pandas datasets to Torch datasets
-│       ├── trainer.py              # Training loop, validation logic, and checkpointing
-│       └── visualizers.py          # Utilities for visualizing predictions, insights, and losses
-│
-├── .gitignore
-├── pre-commit-config.yaml
-│   └── Ensures code quality.  See Pre-Commit Configuration section below.
-│
-└── pyproject.toml
-    └── Declares project metadata, dependencies, and build system in a standard, tool-compatible format.
-```
-
-## Pre-Commit Configuration
-This project uses [**pre-commit**](https://pre-commit.com/) to ensure consistent formatting and prevent common mistakes before code is committed.
-
-| Hook ID                   | Description                                                                 |
-|---------------------------|-----------------------------------------------------------------------------|
-| `black`                  | Formats Python code using [Black](https://github.com/psf/black), a strict code formatter. Ensures consistent style across all `.py` files. |
-| `trailing-whitespace`    | Removes trailing whitespace from all files to keep diffs clean.             |
-| `end-of-file-fixer`      | Ensures that files end with a single newline character.                     |
-| `check-yaml`             | Validates YAML syntax for files like GitHub Actions, pre-commit configs, etc. |
-| `nbstripout`             | Strips output and metadata from Jupyter notebooks to prevent committing large diffs. |
-| `check-added-large-files`| Blocks accidentally committed large files (over 5MB) to avoid bloating the repo. |
-| `check-toml`             | Validates that `pyproject.toml` and other TOML files are correctly formatted and parseable. |
-
-Run all hooks on all files manually using `pre-commit run --all-files`
+All other services (Redis, Airflow scheduler/triggerer/worker/dag-processor, optuna-init, airflow-init) run internally on the Docker network and do not expose host ports.
