@@ -16,8 +16,9 @@ if typing.TYPE_CHECKING:
 
 
 class MDNVisualizer:
-    def __init__(self, trainer: "Trainer"):
+    def __init__(self, trainer: "Trainer", report_folder: str = ""):
         self.trainer = trainer
+        self.report_folder = report_folder
 
     def save_timeseries_from_val(self, indeces, num_targets=None, title=None):
         results = self.trainer.predict_from_val(indeces)
@@ -115,7 +116,10 @@ class MDNVisualizer:
         )
         plt.tight_layout()
 
-        fig.savefig(OUTPUT_DIR / "01_timeseries_forecast.png", bbox_inches="tight")
+        fig.savefig(
+            OUTPUT_DIR / self.report_folder / "01_timeseries_forecast.png",
+            bbox_inches="tight",
+        )
         # plt.show()
 
     def save_mixture_distributions_at_timestep(
@@ -232,7 +236,7 @@ class MDNVisualizer:
         for t in tqdm(
             range(start, end), desc="Generating frames", disable=TQDM_DISABLE
         ):
-            frame_file = OUTPUT_DIR / f"frame_{t:03d}.png"
+            frame_file = OUTPUT_DIR / self.report_folder / f"frame_{t:03d}.png"
             self.save_mixture_distributions_at_timestep(
                 timestep_index=t, num_targets=num_targets, save_path=frame_file
             )
@@ -240,7 +244,11 @@ class MDNVisualizer:
 
         base_size = Image.open(frame_paths[0]).size
         images = [Image.open(fp).resize(base_size) for fp in frame_paths]
-        imageio.mimsave(OUTPUT_DIR / f"04_mixture_evolution.gif", images, duration=0.8)
+        imageio.mimsave(
+            OUTPUT_DIR / self.report_folder / f"04_mixture_evolution.gif",
+            images,
+            duration=0.8,
+        )
 
         for fp in frame_paths:
             os.remove(fp)
@@ -321,7 +329,7 @@ class MDNVisualizer:
         }
 
 
-def save_model_performance(trainer):
+def save_model_performance(trainer, report_folder=""):
     fig, ax = plt.subplots(1, 2, figsize=(12, 4))  # Add a third subplot
     fig.suptitle(f"{trainer.model.__class__.__name__} Training History", fontsize=12)
 
@@ -389,12 +397,15 @@ def save_model_performance(trainer):
         color="black",
     )
 
-    fig.savefig(OUTPUT_DIR / f"02_best_model_performance.png", bbox_inches="tight")
+    fig.savefig(
+        OUTPUT_DIR / report_folder / f"02_best_model_performance.png",
+        bbox_inches="tight",
+    )
 
     return fig
 
 
-def compare_model_performance(*trainers):
+def compare_model_performance(*trainers, report_folder=""):
     fig, ax = plt.subplots(1, 2, figsize=(10, 5))
     fig.suptitle("Model Performance Comparison", fontsize=13)
 
@@ -416,6 +427,9 @@ def compare_model_performance(*trainers):
 
     plt.tight_layout()
 
-    fig.savefig(OUTPUT_DIR / "03_model_performance_comparison.png", bbox_inches="tight")
+    fig.savefig(
+        OUTPUT_DIR / report_folder / "03_model_performance_comparison.png",
+        bbox_inches="tight",
+    )
 
     return fig

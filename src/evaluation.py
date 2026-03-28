@@ -1,6 +1,6 @@
 import math
 from io import StringIO
-
+import os
 import numpy as np
 import pandas as pd
 import torch
@@ -40,7 +40,10 @@ def calculate_baseline(dataset_df: pd.DataFrame):
 
 
 def run_evaluation(
-    study: dict, dataset_df: pd.DataFrame, generate_report: bool = False
+    study: dict,
+    dataset_df: pd.DataFrame,
+    generate_report: bool = False,
+    report_folder: str = "",
 ):
     trainers = {
         "LSTM-MDN": Trainer.from_best_optuna_trial(study["lstm"], dataset_df, LSTM_MDN),
@@ -72,11 +75,16 @@ def run_evaluation(
     best_trainer = best_row["Trainer"]
 
     sample_indeces = range(0, 100)
-    visualizer = MDNVisualizer(best_trainer)
+
+    os.makedirs(OUTPUT_DIR / report_folder, exist_ok=True)
+
+    visualizer = MDNVisualizer(best_trainer, report_folder)
 
     if generate_report:
-        compare_model_performance(*[trainer for trainer in trainers.values()])
-        save_model_performance(best_trainer)
+        compare_model_performance(
+            *[trainer for trainer in trainers.values()], report_folder=report_folder
+        )
+        save_model_performance(best_trainer, report_folder=report_folder)
         visualizer.save_timeseries_from_val(
             sample_indeces, num_targets=None, title="Example Timeseries"
         )
@@ -102,7 +110,7 @@ def run_evaluation(
     print(buffer.getvalue())
 
     if generate_report:
-        with open(OUTPUT_DIR / "metrics.txt", "w") as f:
+        with open(OUTPUT_DIR / report_folder / "metrics.txt", "w") as f:
             f.write(buffer.getvalue())
 
         print(
